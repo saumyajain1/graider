@@ -72,7 +72,7 @@ def sidebar() -> rx.Component:
                 padding_y="1.5em",
                 bg=rx.color("accent", 3),
                 align="start",
-                height="100vh",
+                height="120vh",
                 # height="650px",
                 width="16em",
             ),
