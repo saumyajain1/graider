@@ -8,10 +8,9 @@ from RubricPart import RubricPart
 """
 A static class containing AI-related utility functions for processing questions and answers.
 """
+
+
 class aiTools:
-    
-
-
     """
     Segregates a string containing all questions into individual QuestionPart instances.
         Args:
@@ -19,9 +18,9 @@ class aiTools:
         Returns:
             List[QuestionPart]: A list of QuestionPart instances extracted from the input string.
     """
+
     @staticmethod
     def segrateQuestion(questions_text: str) -> List[QuestionPart]:
-
         prompt = "Your task is to extract each of the question parts from from the provided string.\
                     For each question part you have to extract an id, a text, and a marks field.\
                     The text in the initial part of the question is the context and is also represented as a question part and has 0 marks associated with it.\
@@ -36,7 +35,6 @@ class aiTools:
                     Your output should be a stringified JSON object which looks like this {\"question_parts\":[{\"id\":\"q1_context\",\"text\":\"France is an important country.\",\"marks\":0},{\"id\":\"q1_a\",\"text\":\"What is the capital of france?.\",\"marks\":10},{\"id\":\"q1_b\",\"text\":\"Who is the president of France?\",\"marks\":2},{\"id\":\"q2\",\"text\":\"Describe the process of impeachment.\",\"marks\":7}]}"
         pass  # Function implementation goes here
 
-
     """
     Generates a perfect reference answer for a given question part using the provided context.
         Args:
@@ -45,11 +43,34 @@ class aiTools:
         Returns:
             ReferenceAnswerPart: The generated reference answer part.
     """
+
     @staticmethod
     def generateReferenceAnswerPart(question_part: QuestionPart, context: str) -> ReferenceAnswerPart:
+        prompt = "Your task is to generate the ideal reference answer for the given question part, using the provided context if available.\n"\
+                 "\n"\
+                 "Instructions:\n"\
+                 "- For the given question part, generate a comprehensive and detailed answer that fully addresses the question.\n"\
+                 "- If a context is provided, incorporate relevant information from the context into your answer.\n"\
+                 "- The answer should be self-contained and not refer to previous parts or external information.\n"\
+                 "- The reference answer should be clear and follow logical steps to reach the final conclusion.\n"\
+                 "- The answer should cover all aspects that the question is testing, as it will be used to evaluate student answers.\n"\
+                 "\n"\
+                 "Output Format:\n"\
+                 "Your output should be a stringified JSON object in the following format:\n"\
+                 "Example:\n"
+                "Given:\n"
+                "question_part = {\"id\": \"q2_b\", \"text\": \"Explain the process of photosynthesis.\", \"marks\": 10}\n"
+                "context = \"Plants use sunlight to produce energy.\"\n"
+                "\n"
+                "Your output should be:\n"
+                "{"
+                "\"reference_answer\": {"
+                "\"id\": \"q2_b\", "
+                "\"answer\": \"Photosynthesis is the process by which green plants use sunlight to synthesize nutrients from carbon dioxide and water. It involves chlorophyll in the leaves absorbing light energy, which is then used to convert carbon dioxide from the air and water from the soil into glucose and oxygen. The glucose provides energy for the plant's growth, while the oxygen is released into the atmosphere.\""
+                "}"
+                "}"
 
         pass  # Function implementation goes here
-
 
     """
     Extracts key words from the perfect answer and generates two similar words for each key word.
@@ -59,9 +80,14 @@ class aiTools:
         Returns:
             List[str]: A list containing the key words and their similar words.
     """
+
     @staticmethod
     def extractKeyWordsFromReference(perfect_answer: str, question_part: QuestionPart) -> List[str]:
-        
+        prompt = "Your task is to go through the perfect answer generated and the question part provided and " \
+                 "retrieve all the important keywords which make up the important details of the answer and " \
+                 "that are needed to sufficiently answer what is being asked by the specific question part." \
+                 "Based on the reference answer generated you should return a list of keywords and " \
+                 "store them in a list which are vital for the answer to be correct."
         pass  # Function implementation goes here
 
     """
@@ -73,11 +99,37 @@ class aiTools:
         Returns:
             List[str]: A list of sentences from the student's answers that are relevant to the question part.
     """
+
     @staticmethod
-    def segregateAnswer(answers_text: str, question_part: QuestionPart, reference_answer_part: ReferenceAnswerPart) -> List[str]:
-
+    def segregateAnswer(answers_text: str, question_part: QuestionPart, reference_answer_part: ReferenceAnswerPart) -> \
+    List[str]:
+        prompt = (
+            "Your task is to extract relevant sentences from the student's answers that directly address the given question part.\n"
+            "\n"
+            "Instructions:\n"
+            "- Carefully read the provided question part to understand what is being asked.\n"
+            "- Review the reference answer part to grasp the ideal response.\n"
+            "- Thoroughly go through the student's answers.\n"
+            "- Identify and compile a list of sentences from the student's answers that are most relevant to the question part and its reference answer.\n"
+            "- Students are expected to provide thorough explanations for each question part unless the question specifically asks for a brief, one-word, or numerical answer, or instructs not to explain.\n"
+            "\n"
+            "Output Format:\n"
+            "Your output should be a list of sentences extracted from the student's answers that are relevant to the reference answer of the provided question part.\n"
+            "\n"
+            "Example:\n"
+            "Given:\n"
+            "question_part = {\"id\": \"q4\", \"text\": \"Describe the process of photosynthesis.\", \"marks\": 10}\n"
+            "reference_answer_part = {\"id\": \"q4\", \"answer\": \"Photosynthesis is the process by which green plants use sunlight to synthesize foods from carbon dioxide and water.\"}\n"
+            "answers_text = \"Plants make their own food using sunlight. This process is called photosynthesis. It involves converting carbon dioxide and water into glucose and oxygen.\"\n"
+            "\n"
+            "Your output should be:\n"
+            "[\n"
+            "  \"Plants make their own food using sunlight.\",\n"
+            "  \"This process is called photosynthesis.\",\n"
+            "  \"It involves converting carbon dioxide and water into glucose and oxygen.\"\n"
+            "]"
+        )
         pass  # Function implementation goes here
-
 
     """
     Generates a RubricPart object for a question part using the reference answer and an optional rough rubric.
@@ -88,15 +140,22 @@ class aiTools:
         Returns:
             RubricPart: The generated rubric part.
     """
+
     @staticmethod
     def generateRubricPart(
-        question_part: QuestionPart,
-        reference_answer_part: ReferenceAnswerPart,
-        rough_rubric: Optional[str] = None
+            question_part: QuestionPart,
+            reference_answer_part: ReferenceAnswerPart,
+            rough_rubric: Optional[str] = None
     ) -> RubricPart:
 
+        prompt = ("Your task is to create a RubricObject instance for the given question part using the provided reference answer.\n"
+                  "Instructions:\n"
+                  "- Generate a rubric in a tabular form consisting of several criteria based on the total marks available for the question part.\n"
+                  "- Each criterion should reflect the key points addressed in the reference answer and be as concise as possible.\n"
+                  "- Assign a range of marks for each criterion, clearly explaining the expectations to achieve those marks.\n"
+                  "- Ensure that each criterion aligns with the learning objectives demonstrated in the reference answer and does not include content outside the syllabus.\n"
+                "- Do not assign negative marks; the minimum mark for any criterion should be zero.\n")
         pass  # Function implementation goes here
-
 
     """
     Evaluates a student's answer against a criterion and generates feedback.
@@ -110,11 +169,17 @@ class aiTools:
         Returns:
             FeedbackPart: The feedback generated for the student's answer.
     """
+
     @staticmethod
     def evaluateAnswer(
-        answer_text: str,
-        criterion: str,
-        question_part: QuestionPart,
-        context_question_part: QuestionPart
+            answer_text: str,
+            criterion: str,
+            question_part: QuestionPart,
+            context_question_part: QuestionPart
     ) -> FeedbackPart:
+
+        prompt = "Your task is allocate marks to a provided student answer after analysis of their answer and allocating it to the appropriate criterion based on the student's answer." \
+                 "Each evaluation should be done by part by part basis which will be referred through the provided question part and should also refer to the context to better understand the students answers." \
+                 "After providing the student with their allocated criteria, your task is to provide a small feedback of the reasoning of why the student's answer was placed in the said criteria and what was subsequently missing." \
+                 "While considering the allocation of the criterion by the system you should never allocate answers based on unnecessary information that may or may not be relevant to the course but only relevant to the specific question part."
         pass  # Function implementation goes here
