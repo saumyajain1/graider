@@ -1,6 +1,7 @@
 import reflex as rx
 from .side import sidebar
 
+
 def base_page(child: rx.Component, *args, **kwargs) -> rx.Component:
     return rx.fragment(
         rx.hstack(

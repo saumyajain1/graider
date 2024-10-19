@@ -1,10 +1,12 @@
 import reflex as rx
 from ...ui.base import base_page
 
+
 def ques_page() -> rx.Component:
     # Welcome Page (Index)
+
     my_child = rx.vstack(
-            rx.heading("Enter your questions here", size="9"),
+            rx.heading("Questions", size="9"),
             rx.input(
                 placeholder="Type your question...",  # Placeholder text for the input field
                 width="80%",  # Adjust width as needed
