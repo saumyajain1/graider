@@ -1,4 +1,5 @@
 import reflex as rx
+from .. import navigation
 
 def sidebar_item(
     text: str, icon: str, href: str
@@ -28,11 +29,11 @@ def sidebar_item(
 
 def sidebar_items() -> rx.Component:
     return rx.vstack(
-        sidebar_item("Questions", "layout-dashboard", "/questions"),
-        sidebar_item("Rubric", "square-library", "/rubric"),
-        sidebar_item("Perfect Answer", "bar-chart-4", "/perf_ans"),
-        sidebar_item("Grade Settings", "mail", "/settings"),
-        sidebar_item("Students", "mail", "/students"),
+        sidebar_item("Questions", "layout-dashboard", navigation.routes.ABOUT_ROUTE),
+        sidebar_item("Rubric", "square-library", navigation.routes.RUBRIC_ROUTE),
+        sidebar_item("Perfect Answer", "bar-chart-4", navigation.routes.PERF_ANS_ROUTE),
+        sidebar_item("Grade Settings", "mail", navigation.routes.SETTINGS_ROUTE),
+        sidebar_item("Students", "mail", navigation.routes.STUDENTS_ROUTE),
         spacing="1",
         width="100%",
     )
