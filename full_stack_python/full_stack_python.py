@@ -5,7 +5,7 @@ import reflex as rx
 from .ui.base import base_page
 from rxconfig import config
 from .ui import components
-
+from . import navigation
 
 class State(rx.State):
     """The app state."""
@@ -37,12 +37,12 @@ def index() -> rx.Component:
 
 app = rx.App()
 app.add_page(index)
-app.add_page(components.about_page, route='/about')
-app.add_page(components.ques_page, route='/questions')
-app.add_page(components.rubric_page, route='/rubric')
-app.add_page(components.perf_ans_page, route='/perf_ans')
-app.add_page(components.settings_page, route='/settings')
-app.add_page(components.students_page, route='/students')
+app.add_page(components.about_page, route=navigation.routes.ABOUT_ROUTE)
+app.add_page(components.ques_page, route=navigation.routes.QUES_ROUTE)
+app.add_page(components.rubric_page, route=navigation.routes.RUBRIC_ROUTE)
+app.add_page(components.perf_ans_page, route=navigation.routes.PERF_ANS_ROUTE)
+app.add_page(components.settings_page, route=navigation.routes.SETTINGS_ROUTE)
+app.add_page(components.students_page, route=navigation.routes.STUDENTS_ROUTE)
 # app.add_page(components.students_page().)
 # Route for the students page (list of students)
 # app.add_page(components.review_page, route='/students/ST001')
