@@ -43,12 +43,12 @@ def sidebar() -> rx.Component:
         rx.desktop_only(
             rx.vstack(
                 rx.hstack(
-                    rx.image(
-                        src="/logo.jpg",
-                        width="2.25em",
-                        height="auto",
-                        border_radius="25%",
-                    ),
+                    # rx.image(
+                    #     src="/logo.jpg",
+                    #     width="2.25em",
+                    #     height="auto",
+                    #     border_radius="25%",
+                    # ),
                     rx.heading(
                         "graider", size="7", weight="bold"
                     ),
