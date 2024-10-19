@@ -1,0 +1,41 @@
+import json
+from typing import List
+from Criterion import Criterion
+
+class RubricPart:
+    def __init__(self, question_part_id: str, max_points: float, criteria: List[Criterion]):
+        self.question_part_id = question_part_id
+        self.max_points = max_points
+        self.criteria = criteria  # List of Criterion instances
+        self.isValid = self._evaluate_validity()
+
+    def _get_max_positive_point(self, possible_points: List[str]) -> float:
+        max_positive = 0.0
+        for point_str in possible_points:
+            try:
+                point = float(point_str)
+                if point > 0 and point > max_positive:
+                    max_positive = point
+            except ValueError:
+                raise ValueError(f"Invalid point value '{point_str}' in possible_points.")
+        return max_positive
+
+    def _evaluate_validity(self) -> bool:
+        total_max_positive_points = 0.0
+        for criterion in self.criteria:
+            max_positive_point = self._get_max_positive_point(criterion.possible_points)
+            total_max_positive_points += max_positive_point
+        return total_max_positive_points >= self.max_points
+
+    def to_json(self) -> str:
+        data = {
+            'questionPartId': self.question_part_id,
+            'maxPoints': self.max_points,
+            'criteria': [criterion.to_dict() for criterion in self.criteria],
+            'isValid': self.isValid
+        }
+        return json.dumps(data, indent=2)
+
+    def __repr__(self):
+        return (f"RubricPart(question_part_id='{self.question_part_id}', "
+                f"max_points={self.max_points}, criteria={self.criteria}, isValid={self.isValid})")
