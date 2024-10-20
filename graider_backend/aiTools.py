@@ -1,4 +1,8 @@
+import json
 from typing import List, Optional
+
+from engineio import json
+
 from QuestionPart import QuestionPart
 from ReferenceAnswerPart import ReferenceAnswerPart
 from FeedbackPart import FeedbackPart
@@ -21,6 +25,7 @@ class aiTools:
 
     @staticmethod
     def segrateQuestion(questions_text: str) -> List[QuestionPart]:
+
         prompt = "Your task is to extract each of the question parts from from the provided string.\
                     For each question part you have to extract an id, a text, and a marks field.\
                     The text in the initial part of the question is the context and is also represented as a question part and has 0 marks associated with it.\
@@ -32,43 +37,58 @@ class aiTools:
                     # deep questions are not allowed i.e. q1_a is allowed, q1_a_1 (part within part) not allowed\
                     For text, use the given question for that part, i.e. QUOTE the extracted question. Do not make any changes to it at all.\
                     For marks, if the question part is a context, assign 0, otherwise extract the marks which may be within some type of parenthesis or at the end of the question.\
-                    Your output should be a stringified JSON object which looks like this {\"question_parts\":[{\"id\":\"q1_context\",\"text\":\"France is an important country.\",\"marks\":0},{\"id\":\"q1_a\",\"text\":\"What is the capital of france?.\",\"marks\":10},{\"id\":\"q1_b\",\"text\":\"Who is the president of France?\",\"marks\":2},{\"id\":\"q2\",\"text\":\"Describe the process of impeachment.\",\"marks\":7}]}"
-        pass  # Function implementation goes here
+                    Your output should be a stringified JSON object which looks like this {\"question_parts\":[{\"id\":\"q1_context\",\"text\":\"France is an important country.\",\"marks\":0},{\"id\":\"q1_a\",\"text\":\"What is the capital of france?.\",\"marks\":10},{\"id\":\"q1_b\",\"text\":\"Who " \
+                 "is the president of France?\",\"marks\":2},{\"id\":\"q2\",\"text\":\"Describe the process of impeachment.\",\"marks\":7}]}"
+
+        ret_val_from_AI = ""
+        parsed_data = json.loads(ret_val_from_AI)
+        # Step 3: Convert the parsed dictionary to a list of QuestionPart objects
+        question_parts_list = [
+            QuestionPart(id=part['id'], text=part['text'], marks=part['marks'])
+            for part in parsed_data['question_parts']
+        ]
+        return question_parts_list
+            # pass  # Function implementation goes here
 
     """
     Generates a perfect reference answer for a given question part using the provided context.
         Args:
             question_part (QuestionPart): The question part for which to generate the reference answer.
-            context (str): Additional context for the question part.
+            context (QuestionPart): Additional context for the question part.
         Returns:
             ReferenceAnswerPart: The generated reference answer part.
     """
 
     @staticmethod
-    def generateReferenceAnswerPart(question_part: QuestionPart, context: str) -> ReferenceAnswerPart:
+    def generateReferenceAnswerPart(question_part: QuestionPart, context: QuestionPart) -> ReferenceAnswerPart:
+        quest = question_part.text
+        context_text = context.text
         prompt = "Your task is to generate the ideal reference answer for the given question part, using the provided context if available.\n" \
                  "\n" \
                  "Instructions:\n" \
                  "- For the given question part, generate a comprehensive and detailed answer that fully addresses the question.\n" \
                  "- If a context is provided, incorporate relevant information from the context into your answer.\n" \
-                 "- The answer should be self-contained and not refer to previous parts or external information.\n" \
                  "- The reference answer should be clear and follow logical steps to reach the final conclusion.\n" \
-                 "- The answer should cover all aspects that the question is testing, as it will be used to evaluate student answers.\n" \
+                 "- The answer should cover all aspects and include technical terms (keywords) if applicable that the question is testing, as it will be used to evaluate student answers.\n" \
                  "\n" \
                  "Output Format:\n" \
                  "Your output should be a stringified JSON object in the following format:\n" \
                  "Example:\n"
         "Given:\n"
-        "question_part = {\"id\": \"q2_b\", \"text\": \"Explain the process of photosynthesis.\", \"marks\": 10}\n"
+        "question_part = \"Explain the process of photosynthesis.\"\n"
         "context = \"Plants use sunlight to produce energy.\"\n"
         "\n"
         "Your output should be:\n"
         "{"
-        "\"reference_answer\": {"
-        "\"id\": \"q2_b\", "
-        "\"answer\": \"Photosynthesis is the process by which green plants use sunlight to synthesize nutrients from carbon dioxide and water. It involves chlorophyll in the leaves absorbing light energy, which is then used to convert carbon dioxide from the air and water from the soil into glucose and oxygen. The glucose provides energy for the plant's growth, while the oxygen is released into the atmosphere.\""
+        "\"reference_answer\" : \"Photosynthesis is the process by which green plants use sunlight to synthesize nutrients from carbon dioxide and water. It involves chlorophyll in the leaves absorbing light energy, which is then used to convert carbon dioxide from the air and water from the soil into glucose and oxygen. The glucose provides energy for the plant's growth, while the oxygen is released into the atmosphere.\""
         "}"
-        "}"
+
+        ret_val_from_AI = ""
+        ref_ans = json.loads(ret_val_from_AI)["reference_answer"]
+        ref_ans_part = ReferenceAnswerPart(question_part.id, ref_ans)
+        return ref_ans_part
+
+        # "- The answer should be self-contained and not refer to previous parts or external information.\n" \
 
     pass  # Function implementation goes here
 
@@ -88,13 +108,24 @@ def extractKeyWordsFromReference(perfect_answer: str, question_part: QuestionPar
     prompt = "Your task is to go through the perfect answer generated and the question part provided and " \
              "retrieve all the important keywords which make up the important details of the answer and " \
              "that are needed to sufficiently answer what is being asked by the specific question part." \
-             "Based on the reference answer generated you should return a list of keywords and " \
-             "store them in a list which are vital for the answer to be correct."
-    pass  # Function implementation goes here
+             "Based on the reference answer generated you should return a list of keywords in stringified JSON " \
+             "which are vital for the answer to be correct."
+    '{\\"reference_keywords\\" : \'["photosynthesis", "green plants", "sunlight", "synthesize", "nutrients", "carbon dioxide", "water", "chlorophyll", "leaves", "absorb", "light energy", "glucose", "oxygen", "energy", "growth", "atmosphere", "air", "soil"]\'}'
+
+    # pass  # Function implementation goes here
+
+    ret_val_from_AI = ""
+    parsed_data = json.loads(ret_val_from_AI)
+
+    return parsed_data["reference_keywords"]
+
+
+
+
 
 
 """
-Extracts relevant sentences from a student's answers that answer the given question part.
+Extracts relevant sentences from a student's answers that answer the given question part and are similar to the reference answer in complicated cases.
     Args:
         answers_text (str): A string containing the student's answers to all question parts.
         question_part (QuestionPart): The specific question part to extract answers for.
@@ -111,6 +142,8 @@ def segregateAnswer(answers_text: str, question_part: QuestionPart, reference_an
         "Your task is to extract relevant sentences from the student's answers that directly address the given question part.\n"
         "\n"
         "Instructions:\n"
+        "- Ensure that the extracted sentences are direct quotations from the student's answers. Do not modify the sentences in any manner"
+        "- Students often submit poorly formatted answers and may not label the answer parts or order the parts correctly. When they do label and order it, it is easier to extract relevant portions, otherwise its not."
         "- Carefully read the provided question part to understand what is being asked.\n"
         "- Review the reference answer part to grasp the ideal response.\n"
         "- Thoroughly go through the student's answers.\n"
@@ -133,7 +166,14 @@ def segregateAnswer(answers_text: str, question_part: QuestionPart, reference_an
         "  \"It involves converting carbon dioxide and water into glucose and oxygen.\"\n"
         "]"
     )
-    pass  # Function implementation goes here
+    ret_val_from_AI = ""
+    parsed_data = json.loads(ret_val_from_AI)
+
+    return parsed_data["answers_text"]
+
+
+
+
 
 
 """
@@ -162,6 +202,20 @@ def generateRubricPart(
         "- Ensure that each criterion aligns with the learning objectives demonstrated in the reference answer and does not include content outside the syllabus.\n"
         "- Do not assign negative marks; the minimum mark for any criterion should be zero.\n")
     pass  # Function implementation goes here
+
+    ret_val_from_AI = ""
+    parsed_data = json.loads(ret_val_from_AI)
+
+    criterion = ret_val_from_AI
+
+    rubric_list = RubricPart(
+        id = question_part['id'], max_points= question_part['marks'], criteria=criterion,
+        isValid= evaluateAnswer(reference_answer_part, criterion, question_part)
+    )
+
+    return rubric_list
+
+
 
 
 """

@@ -2,10 +2,10 @@ from typing import List
 import json
 
 class ReferenceAnswerPart:
-    def __init__(self, qid: str, answer: str, keywords: List[str]):
+    def __init__(self, qid: str, answer: str):
         self._qid = qid  # Use a private variable to store qid
         self.answer = answer
-        self.keywords = keywords
+        self.keywords = []
 
     # Getter for 'qid' (read-only property)
     @property
