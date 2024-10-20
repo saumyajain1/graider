@@ -12,6 +12,8 @@ from RubricPart import RubricPart
 
 from dotenv import load_dotenv
 
+from Criterion import Criterion
+
 load_dotenv(".env")
 
 """
@@ -269,12 +271,45 @@ Evaluates a student's answer against a criterion and generates feedback.
 @staticmethod
 def evaluateAnswer(
         answer_text: str,
-        criterion: str,
+        criterion: Criterion,
         question_part: QuestionPart,
         context_question_part: QuestionPart
 ) -> FeedbackPart:
-    prompt = "Your task is allocate marks to a provided student answer after analysis of their answer and allocating it to the appropriate criterion based on the student's answer." \
-             "Each evaluation should be done by part by part basis which will be referred through the provided question part and should also refer to the context to better understand the students answers." \
-             "After providing the student with their allocated criteria, your task is to provide a small feedback of the reasoning of why the student's answer was placed in the said criteria and what was subsequently missing." \
-             "While considering the allocation of the criterion by the system you should never allocate answers based on unnecessary information that may or may not be relevant to the course but only relevant to the specific question part."
-    pass  # Function implementation goes here
+    crit_desc = criterion.description
+    crit_poss_points = criterion.possible_points
+    system_prompt = f"You are an experienced assignment/exam grader. Your task is to allocate marks and provide feedback to a provided student answer for the provided question and question context but evaluate based on the following criterion ONLY: {crit_desc}" \
+                    f"The marks allotted must be one of the items in the list: {crit_poss_points}" \
+                    f"Question Context: {context_question_part} \n Question: {question_part}" \
+                    "Remember that there are other granular criterion which are being evaluated separately so only to evaluate based on the current criterion" \
+                    "Thoroughly analyze the answer to output feedback on the answer provided and to evaluate which of the possible points in the list should be allotted based on how well that criterion was covered in the answer.  " \
+                    "The feedback of the reasoning should be brief (1-3 sentences) of why the student's answer was given the particular score for that criteria and what was subsequently missing." \
+                    "While considering the allocation of the criterion by the system you should never award points based on unnecessary information but only relevant to the specific question part and criterion." \
+                    "Your output should be in Json: {\"feedback\": \"Great explanation, but needs more clarity on the second point.\", \"marks\": 8.5}"
+
+    client = Groq()
+    completion = client.chat.completions.create(
+        model="llama-3.2-90b-text-preview",
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": answer_text
+            }
+        ],
+        temperature=0.6,
+        max_tokens=2500,
+        top_p=0.4,
+        stream=False,
+        response_format={"type": "json_object"},
+        stop=None,
+    )
+
+    # print(completion.choices[0].message.content)
+    ai_response = completion.choices[0].message.content
+
+    parsed_data = json.loads(ai_response)
+
+    return FeedbackPart(question_part.id, crit_desc, parsed_data['feedback'], parsed_data['marks'])
