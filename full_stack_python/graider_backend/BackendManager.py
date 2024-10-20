@@ -1,6 +1,7 @@
 from typing import List, Optional
 from .Student import Student
 from .QuestionPart import QuestionPart
+from .Criterion import Criterion
 from .ReferenceAnswerPart import ReferenceAnswerPart
 from .RubricPart import RubricPart
 from .aiTools import aiTools
@@ -30,6 +31,12 @@ class BackendManager:
         for qp in self.question_parts:
             if qp.id == id:
                 return qp
+        return None
+    
+    def get_rubric_by_id(self, id:str) -> QuestionPart:
+        for rb in self.rubric_parts:
+            if rb.id == id:
+                return rb
         return None
 
     def reset_everything(self) -> None:
@@ -68,7 +75,7 @@ class BackendManager:
         Generates all question parts by segregating the provided questions text.
         """
         self.reset_questions()
-        self.question_parts = aiTools.segrateQuestion(questions_text)
+        self.question_parts = aiTools.segregateQuestion(questions_text)
 
     def set_questions_manually(self, question_parts: List[QuestionPart]) -> None:
         """

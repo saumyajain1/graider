@@ -1,3 +1,4 @@
+import copy
 import reflex as rx
 from typing import Any, List
 from ...ui.base import base_page
@@ -60,6 +61,8 @@ class DataEditorState_HP(rx.State):
 
     def refresh_table(self):
         """Refresh the table by populating data from the current question parts in the API."""
+        # self.populate_data(copy.deepcopy(api.question_parts))
+
         self.data: list[List[Any]] = []
 
         if (api.question_parts != None): 
@@ -163,6 +166,7 @@ class DeleteState(rx.State):
 
 class FormState(rx.State):
     form_data: str
+    did_submit: bool = False
 
     def handle_submit_gen(self, form_data: str):
         """Handle form submission and update BackendManager."""
@@ -171,7 +175,9 @@ class FormState(rx.State):
         # Set the did_submit flag to True
         self.did_submit = True
 
-        api.generate_all_questions(form_data)
+        # print(form_data.get('ques'))
+
+        api.generate_all_questions(form_data.get('ques'))
         # # Refresh the table to reflect the new question
         # DataEditorState_HP.refresh_table()
 
