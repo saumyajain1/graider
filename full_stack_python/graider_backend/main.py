@@ -1,4 +1,4 @@
-from aiTools import aiTools
+from .aiTools import aiTools
 
 
 def main():

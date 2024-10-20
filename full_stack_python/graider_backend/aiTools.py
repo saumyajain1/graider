@@ -4,12 +4,12 @@ from groq import Groq
 import requests
 import json
 
-from QuestionPart import QuestionPart
-from ReferenceAnswerPart import ReferenceAnswerPart
-from FeedbackPart import FeedbackPart
+from .QuestionPart import QuestionPart
+from .ReferenceAnswerPart import ReferenceAnswerPart
+from .FeedbackPart import FeedbackPart
 # Assuming RubricPart is defined elsewhere
-from RubricPart import RubricPart
-from Criterion import Criterion
+from .RubricPart import RubricPart
+from .Criterion import Criterion
 
 from dotenv import load_dotenv
 

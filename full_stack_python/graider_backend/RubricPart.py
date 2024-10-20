@@ -1,6 +1,6 @@
 import json
 from typing import List
-from Criterion import Criterion
+from .Criterion import Criterion
 
 class RubricPart:
     def __init__(self, question_part_id: str, max_points: float, criteria: List[Criterion]):

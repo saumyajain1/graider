@@ -1,10 +1,10 @@
 from typing import List, Optional
-from Student import Student
-from QuestionPart import QuestionPart
-from ReferenceAnswerPart import ReferenceAnswerPart
-from RubricPart import RubricPart
-from aiTools import aiTools
-from FeedbackPart import FeedbackPart
+from .Student import Student
+from .QuestionPart import QuestionPart
+from .ReferenceAnswerPart import ReferenceAnswerPart
+from .RubricPart import RubricPart
+from .aiTools import aiTools
+from .FeedbackPart import FeedbackPart
 
 class BackendManager:
     """
@@ -130,3 +130,6 @@ class BackendManager:
         """
         for student in self.students:
             self.grade_student(student)
+
+# Single instance of BackendManager
+api = BackendManager()

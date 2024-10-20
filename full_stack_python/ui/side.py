@@ -29,7 +29,7 @@ def sidebar_item(
 
 def sidebar_items() -> rx.Component:
     return rx.vstack(
-        sidebar_item("Questions", "layout-dashboard", navigation.routes.ABOUT_ROUTE),
+        sidebar_item("Questions", "layout-dashboard", navigation.routes.QUES_ROUTE),
         sidebar_item("Rubric", "square-library", navigation.routes.RUBRIC_ROUTE),
         sidebar_item("Perfect Answer", "bar-chart-4", navigation.routes.PERF_ANS_ROUTE),
         sidebar_item("Grade Settings", "mail", navigation.routes.SETTINGS_ROUTE),
