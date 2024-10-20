@@ -109,7 +109,7 @@ def create_table_body():
                 cell_content="Rishav Sidhu"
             ),
             create_table_cell(
-                cell_content="2023-05-15 14:30"
+                cell_content="-"
             ),
             create_status_cell(
                 bg_color="#FDE68A",
@@ -133,7 +133,7 @@ def create_table_body():
                 cell_content="Saumya Jain"
             ),
             create_table_cell(
-                cell_content="2023-05-15 10:15"
+                cell_content="91"
             ),
             create_status_cell(
                 bg_color="#A7F3D0",
@@ -157,7 +157,7 @@ def create_table_body():
                 cell_content="Nabeel Ali"
             ),
             create_table_cell(
-                cell_content="2023-05-14 16:45"
+                cell_content="85"
             ),
             create_status_cell(
                 bg_color="#FECACA",
@@ -248,7 +248,7 @@ def create_submissions_table():
                     cell_content="Student Name"
                 ),
                 create_table_header_cell(
-                    cell_content="Submitted"
+                    cell_content="Score"
                 ),
                 create_table_header_cell(
                     cell_content="Status"

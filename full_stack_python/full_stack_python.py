@@ -46,7 +46,7 @@ app.add_page(components.students_page, route=navigation.routes.STUDENTS_ROUTE)
 # app.add_page(components.students_page().)
 # Route for the students page (list of students)
 # app.add_page(components.review_page, route='/students/ST001')
-app.add_page(components.review_page, route='/students/{student_id}')
+app.add_page(components.review_page, route='/students/ST001')
 # app.add_page(lambda student_id: components.review_page(student_id), route='/students/{student_id}')
 # Instantiate ReviewPage and add it to the route
 # review_page_instance = components.ReviewPage()
