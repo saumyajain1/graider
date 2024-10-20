@@ -178,6 +178,7 @@ class FormState(rx.State):
         # print(form_data.get('ques'))
 
         api.generate_all_questions(form_data.get('ques'))
+        return DataEditorState_HP.populate_data(api.question_parts)
         # # Refresh the table to reflect the new question
         # DataEditorState_HP.refresh_table()
 

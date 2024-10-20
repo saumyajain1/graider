@@ -1,7 +1,15 @@
+import os
+import sys
+
+current_directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_directory)
+
+
+
 import json
 from typing import List, Dict, Optional
-from .FeedbackPart import FeedbackPart  # Import the FeedbackPart class
-from .QuestionPart import QuestionPart  # Import the QuestionPart class
+from FeedbackPart import FeedbackPart  # Import the FeedbackPart class
+from QuestionPart import QuestionPart  # Import the QuestionPart class
 
 class Student:
     def __init__(self, question_parts: List[QuestionPart]) -> None:

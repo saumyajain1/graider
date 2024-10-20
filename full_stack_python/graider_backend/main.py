@@ -1,4 +1,10 @@
-from .aiTools import aiTools
+import os
+import sys
+
+current_directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_directory)
+
+from aiTools import aiTools
 
 
 def main():
@@ -24,7 +30,7 @@ lines on the scatterplot (the same scatterplot as in part (c)). Report the equat
 two regression lines, and include the scatterplot in your solution. Which method (fitting one\
 overall regression line in (b) versus fitting two separate regression lines in this part) do you\
 think works better for our dataset? Briefly justify your choice."
-    listOfQuestionParts = aiTools.segrateQuestion(question)
+    listOfQuestionParts = aiTools.segregateQuestion(question)
 
     print(1)
 

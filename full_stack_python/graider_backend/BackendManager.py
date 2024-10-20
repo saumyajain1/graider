@@ -1,11 +1,18 @@
+import os
+import sys
+
+current_directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_directory)
+
+
 from typing import List, Optional
-from .Student import Student
-from .QuestionPart import QuestionPart
-from .Criterion import Criterion
-from .ReferenceAnswerPart import ReferenceAnswerPart
-from .RubricPart import RubricPart
-from .aiTools import aiTools
-from .FeedbackPart import FeedbackPart
+from Student import Student
+from QuestionPart import QuestionPart
+from Criterion import Criterion
+from ReferenceAnswerPart import ReferenceAnswerPart
+from RubricPart import RubricPart
+from aiTools import aiTools
+from FeedbackPart import FeedbackPart
 
 class BackendManager:
     """

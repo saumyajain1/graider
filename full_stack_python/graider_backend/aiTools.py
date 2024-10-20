@@ -1,15 +1,22 @@
+import os
+import sys
+
+current_directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_directory)
+
+
 import json
 from typing import List, Optional
 from groq import Groq
 import requests
 import json
 
-from .QuestionPart import QuestionPart
-from .ReferenceAnswerPart import ReferenceAnswerPart
-from .FeedbackPart import FeedbackPart
+from QuestionPart import QuestionPart
+from ReferenceAnswerPart import ReferenceAnswerPart
+from FeedbackPart import FeedbackPart
 # Assuming RubricPart is defined elsewhere
-from .RubricPart import RubricPart
-from .Criterion import Criterion
+from RubricPart import RubricPart
+from Criterion import Criterion
 
 from dotenv import load_dotenv
 
@@ -45,6 +52,7 @@ class aiTools:
                     Your output should be a stringified JSON object which looks like this {\"question_parts\":[{\"id\":\"q1_context\",\"text\":\"France is an important country.\",\"marks\":0},{\"id\":\"q1_a\",\"text\":\"What is the capital of france?.\",\"marks\":10},{\"id\":\"q1_b\",\"text\":\"Who " \
                         "is the president of France?\",\"marks\":2},{\"id\":\"q2\",\"text\":\"Describe the process of impeachment.\",\"marks\":7}]}"
 
+        load_dotenv()
         client = Groq()
         completion = client.chat.completions.create(
             model="llama-3.2-90b-text-preview",
@@ -111,6 +119,7 @@ class aiTools:
         "\"reference_answer\" : \"Photosynthesis is the process by which green plants use sunlight to synthesize nutrients from carbon dioxide and water. It involves chlorophyll in the leaves absorbing light energy, which is then used to convert carbon dioxide from the air and water from the soil into glucose and oxygen. The glucose provides energy for the plant's growth, while the oxygen is released into the atmosphere.\""
         "}"
 
+        load_dotenv()
         client = Groq()
         completion = client.chat.completions.create(
             model="llama-3.2-90b-text-preview",
@@ -161,6 +170,7 @@ def extractKeyWordsFromReference(perfect_answer: str, question_part: QuestionPar
 
     # pass  # Function implementation goes here
 
+    load_dotenv()
     client = Groq()
     completion = client.chat.completions.create(
         model="llama-3.2-90b-text-preview",
@@ -231,6 +241,7 @@ def segregateAnswer(answers_text: str, question_part: QuestionPart, reference_an
         "  \"It involves converting carbon dioxide and water into glucose and oxygen.\"\n"
         "]")
 
+    load_dotenv()
     client = Groq()
     completion = client.chat.completions.create(
         model="llama-3.2-90b-text-preview",
@@ -331,6 +342,7 @@ def evaluateAnswer(
                     "While considering the allocation of the criterion by the system you should never award points based on unnecessary information but only relevant to the specific question part and criterion." \
                     "Your output should be in Json: {\"feedback\": \"Great explanation, but needs more clarity on the second point.\", \"marks\": 8.5}"
 
+    load_dotenv()
     client = Groq()
     completion = client.chat.completions.create(
         model="llama-3.2-90b-text-preview",
