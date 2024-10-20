@@ -40,6 +40,12 @@ class BackendManager:
                 return qp
         return None
     
+    def get_refAnsPart_by_id(self, id:str) -> ReferenceAnswerPart:
+        for ra in self.reference_answer_parts:
+            if ra.id == id:
+                return ra
+        return None
+    
     def get_rubricPart_by_id(self, id:str) -> RubricPart:
         for rp in self.rubric_parts:
             if rp.id == id:
@@ -123,10 +129,14 @@ class BackendManager:
         self.reset_reference_answers()
         for question_part in self.question_parts:
             if not question_part.id.endswith("context"):
-                context = None
-            reference_answer = aiTools.generateReferenceAnswerPart(question_part, context)
-            self.reference_answer_parts.append(reference_answer)
+                context = self.get_questionPart_by_id(self.generate_context_id(question_part.id))
+                reference_answer = aiTools.generateReferenceAnswerPart(question_part, context)
+                self.reference_answer_parts.append(reference_answer)
 
+    def generate_context_id(self, qid : str) -> str:
+        context = qid.split('_')[0]+"_"+"context"
+        return context
+                
 
     def extract_keywords_from_references(self) -> None:
         """

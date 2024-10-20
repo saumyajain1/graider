@@ -10,7 +10,7 @@ from ...graider_backend.RubricPart import RubricPart
 
 
 class SelectState(rx.State):
-    value: str = "apple"
+    value: str = ""
     values: List[str] = []
 
     def refresh_ids(self):
@@ -25,15 +25,28 @@ class SelectState(rx.State):
             if part.qid == qid:
                 return part.get_answer()
             return None # Return None if no match is found
+        
+    @staticmethod
+    def find_gen_answer_by_qid(qid: str) -> str:
+        api.generate_reference_answers()
+        for part in api.reference_answer_parts:
+            if part.qid == qid:
+                return part.get_answer()
+            return None # Return None if no match is found
 
     def change_value(self, value: str):
         """Change the select value var."""
         self.value = value
         print(self.value)
+
+    def handle_generate(self):
+        api.generate_reference_answers()
     
 
 def perf_ans_page() -> rx.Component:
     # Welcome Page (Index)
+    api.generate_reference_answers()
+
     my_menu = rx.center(
         rx.select(
             SelectState.values,
@@ -58,7 +71,7 @@ def perf_ans_page() -> rx.Component:
         rx.divider(),
         rx.card("Perfect Answer"),
         my_answer,
-        rx.button("Generate Answer from AI", on_click=api.generate_reference_answers()),
+        rx.button("Generate Answer from AI", on_click=SelectState.find_gen_answer_by_qid(SelectState.value)),
         spacing="5",
         justify="center",
         text_align="centre",
