@@ -280,7 +280,7 @@ def render_header():
     )
 
 
-def render_question_paper(answer_state: rx.State):
+def render_question_paper():
     """Render the question paper display area with text input for student answers."""
     return rx.box(
         rx.text(
@@ -304,12 +304,12 @@ def render_question_paper(answer_state: rx.State):
                 "--ring-color": "#3B82F6",
             },
             # Bind the textarea value to answer_state
-            value=answer_state.value,
-            on_change=answer_state.set_value,  # Update the state when the textarea changes
+            # value=answer_state.value,
+            # on_change=answer_state.set_value,  # Update the state when the textarea changes
         ),
         rx.el.button(
             "Submit Answer",
-            on_click=lambda: handle_answer_submission(answer_state.value),
+            # on_click=lambda: handle_answer_submission(answer_state.value),
             background_color="#3B82F6",
             color="white",
             padding="0.5rem 1rem",
@@ -391,14 +391,16 @@ def render_chatbot_interface():
 
 def review_page() -> rx.Component:
     """Display the student's submission and allow grading."""
-    # Initialize a state for storing the student's answer
-    answer_state = rx.state(" ")
+    # Retrieve student_id from kwargs
+    # student_id = kwargs.get('student_id', 'Unknown')
+    student_id = "ST001"
+    # print(student_id)
 
     child_page = rx.box(
         render_header(),
         rx.flex(
             rx.box(
-                render_question_paper(answer_state),  # Text input and submit button added here
+                render_question_paper(),
                 render_file_upload(),  # Include file upload section here
                 padding_right="1.5rem",
                 width="95%",
@@ -418,5 +420,6 @@ def review_page() -> rx.Component:
         ),
         margin_left="auto",
         margin_right="auto",
+        padding="1.5rem",
     )
     return base_page(child_page)
