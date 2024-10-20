@@ -6,8 +6,11 @@
 
 
 
+from dataclasses import dataclass
+
+
+@dataclass
 class QuestionPart:
-    def __init__(self, id: str, text: str, marks: int):
-        self.id = id
-        self.text = text
-        self.marks = marks
+    id: str
+    text: str
+    marks: float

@@ -23,6 +23,15 @@ class BackendManager:
         if student in self.students:
             self.students.remove(student)
 
+    def sortQuestionParts(self) -> None:
+        self.question_parts.sort(key=lambda x: x.id)
+    
+    def get_questionPart_by_id(self, id:str) -> QuestionPart:
+        for qp in self.question_parts:
+            if qp.id == id:
+                return qp
+        return None
+
     def reset_everything(self) -> None:
         """
         Resets all data including students, questions, reference answers, rubrics, and student feedback.
