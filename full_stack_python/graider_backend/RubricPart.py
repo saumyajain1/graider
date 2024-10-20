@@ -11,13 +11,13 @@ class RubricPart:
     question_part_id: str
     max_points: float
     criteria: List[Criterion]
+    # sValid = self._evaluate_validity()
 
     def get_criterion_by_id(self, id:str) -> Criterion:
         for cr in self.criteria:
             if cr.id == id:
                 return cr
         return None
-        # self.isValid = self._evaluate_validity()
 
     # def _get_max_positive_point(self, possible_points: List[str]) -> float:
     #     max_positive = 0.0
@@ -30,7 +30,7 @@ class RubricPart:
     #             raise ValueError(f"Invalid point value '{point_str}' in possible_points.")
     #     return max_positive
 
-    # def _evaluate_validity(self) -> bool:
+    # def _get_validity(self) -> bool:
     #     total_max_positive_points = 0.0
     #     for criterion in self.criteria:
     #         max_positive_point = self._get_max_positive_point(criterion.possible_points)

@@ -33,11 +33,36 @@ class BackendManager:
                 return qp
         return None
     
-    def get_rubric_by_id(self, id:str) -> QuestionPart:
-        for rb in self.rubric_parts:
-            if rb.id == id:
-                return rb
+    def get_rubricPart_by_id(self, id:str) -> RubricPart:
+        for rp in self.rubric_parts:
+            if rp.id == id:
+                return rp
         return None
+    
+    def initialize_rubric_parts(self):
+        for qp in self.question_parts:
+            rp = RubricPart(qp.id, qp.marks, [])
+            self.rubric_parts.append(rp)
+    
+    def add_criterion_to_rubric_part(self, qPartId: str,  criterion: Criterion) -> None:
+        rp = self.get_rubricPart_by_id(qPartId)
+        if rp == None:
+            return
+        else:
+            self.remove_criterion_from_rubric_part(qPartId, criterion.criterion_id)
+            rp.criteria.append(criterion)
+
+
+    def remove_criterion_from_rubric_part(self, qPartId, critId) -> None:
+        rp = self.get_rubricPart_by_id(qPartId)
+        if rp == None:
+            return
+        else:
+            crit = rp.get_criterion_by_id(critId)
+            if(crit == None):
+                return
+            else:
+                rp.criteria.remove(crit)
 
     def reset_everything(self) -> None:
         """
