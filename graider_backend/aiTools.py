@@ -1,13 +1,18 @@
 import json
 from typing import List, Optional
-
-from engineio import json
+from groq import Groq
+import requests
+import json
 
 from QuestionPart import QuestionPart
 from ReferenceAnswerPart import ReferenceAnswerPart
 from FeedbackPart import FeedbackPart
 # Assuming RubricPart is defined elsewhere
 from RubricPart import RubricPart
+
+from dotenv import load_dotenv
+
+load_dotenv(".env")
 
 """
 A static class containing AI-related utility functions for processing questions and answers.
@@ -26,7 +31,7 @@ class aiTools:
     @staticmethod
     def segrateQuestion(questions_text: str) -> List[QuestionPart]:
 
-        prompt = "Your task is to extract each of the question parts from from the provided string.\
+        system_prompt = "Your task is to extract each of the question parts from from the provided string.\
                     For each question part you have to extract an id, a text, and a marks field.\
                     The text in the initial part of the question is the context and is also represented as a question part and has 0 marks associated with it.\
                     For id, use the same question number in the provided document as closely as possible, and format it according to these rules:\
@@ -35,18 +40,43 @@ class aiTools:
                     # context nodes: examples q1_context applies to each question part within q1 such as q1_a and q1_b\
                     # id must be unique\
                     # deep questions are not allowed i.e. q1_a is allowed, q1_a_1 (part within part) not allowed\
-                    For text, use the given question for that part, i.e. QUOTE the extracted question. Do not make any changes to it at all.\
+                    For text, extract the text portion from the given question for that part, i.e. QUOTE the extracted question. Do not make any changes to it at all.\
                     For marks, if the question part is a context, assign 0, otherwise extract the marks which may be within some type of parenthesis or at the end of the question.\
                     Your output should be a stringified JSON object which looks like this {\"question_parts\":[{\"id\":\"q1_context\",\"text\":\"France is an important country.\",\"marks\":0},{\"id\":\"q1_a\",\"text\":\"What is the capital of france?.\",\"marks\":10},{\"id\":\"q1_b\",\"text\":\"Who " \
                  "is the president of France?\",\"marks\":2},{\"id\":\"q2\",\"text\":\"Describe the process of impeachment.\",\"marks\":7}]}"
+        
+        client = Groq()
+        completion = client.chat.completions.create(
+            model="llama-3.2-90b-text-preview",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": questions_text
+                }
+            ],
+            temperature=0.6,
+            max_tokens=2500,
+            top_p=0.4,
+            stream=False,
+            response_format={"type": "json_object"},
+            stop=None,
+        )
 
-        ret_val_from_AI = ""
-        parsed_data = json.loads(ret_val_from_AI)
+        # print(completion.choices[0].message.content)
+        ai_response = completion.choices[0].message.content
+
+        parsed_data = json.loads(ai_response)
         # Step 3: Convert the parsed dictionary to a list of QuestionPart objects
         question_parts_list = [
             QuestionPart(id=part['id'], text=part['text'], marks=part['marks'])
             for part in parsed_data['question_parts']
         ]
+
+        # return []
         return question_parts_list
             # pass  # Function implementation goes here
 
@@ -72,7 +102,7 @@ class aiTools:
                  "- The answer should cover all aspects and include technical terms (keywords) if applicable that the question is testing, as it will be used to evaluate student answers.\n" \
                  "\n" \
                  "Output Format:\n" \
-                 "Your output should be a stringified JSON object in the following format:\n" \
+                 "Your output should be a stringified JSON object and no other text accompanying it, in the following format:\n" \
                  "Example:\n"
         "Given:\n"
         "question_part = \"Explain the process of photosynthesis.\"\n"
@@ -82,6 +112,10 @@ class aiTools:
         "{"
         "\"reference_answer\" : \"Photosynthesis is the process by which green plants use sunlight to synthesize nutrients from carbon dioxide and water. It involves chlorophyll in the leaves absorbing light energy, which is then used to convert carbon dioxide from the air and water from the soil into glucose and oxygen. The glucose provides energy for the plant's growth, while the oxygen is released into the atmosphere.\""
         "}"
+
+
+
+        
 
         ret_val_from_AI = ""
         ref_ans = json.loads(ret_val_from_AI)["reference_answer"]
