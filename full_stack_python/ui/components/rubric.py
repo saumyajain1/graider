@@ -154,6 +154,7 @@ class DeleteState(rx.State):
         # qp_to_delete = api.get_questionPart_by_id(form_data.get('id'))
         # api.question_parts.remove(qp_to_delete)
         
+        # api.remove_criterion_from_question_part(qPartId, critId)
         
         # Set the did_submit flag to True
         self.did_submit = True
@@ -260,6 +261,29 @@ def rubric_page() -> rx.Component:
         reset_on_submit=True,
     )
 
+    # Form for inputting new questions
+    my_delete_form = rx.form(
+        rx.vstack(rx.input(
+                    placeholder="Question ID",
+                    name="qid",
+                    type="string",
+                    required=True,
+                    width="100%"
+                ),
+                rx.input(
+                    placeholder="Criterion ID",
+                    name="cid",
+                    type="string",
+                    required=True,
+                    width="100%"
+                ),
+            rx.button("Delete", type="submit"),
+            align="center"
+        ),
+        on_submit=lambda form_data: DeleteState.handle_delete(form_data),  # Directly call handle_submit
+        reset_on_submit=True,
+    )
+
     my_editor = rx.data_editor(
         columns=DataEditor.cols,
         data=DataEditor.data,
@@ -279,7 +303,7 @@ def rubric_page() -> rx.Component:
         form_subheading,  # Subheading for my_form
         my_form,  # Always display the individual question form
         delete_form_subheading,
-        # my_delete_form,
+        my_delete_form,
         justify="center",
         text_align="center",
         align="center",
