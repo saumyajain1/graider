@@ -7,7 +7,7 @@ def review_page() -> rx.Component:
     # Retrieve student_id from kwargs
     # student_id = kwargs.get('student_id', 'Unknown')
     student_id = "ST001"
-    print(student_id)
+    # print(student_id)
 
     child_page = rx.vstack(
         rx.heading(f"Review Submission for {student_id}", size="9"),
