@@ -116,14 +116,17 @@ class BackendManager:
         self.reset_questions()
         self.question_parts = question_parts
 
-    def generate_reference_answers(self, context: str) -> None:
+    def generate_reference_answers(self) -> None:
         """
         Generates reference answers for all question parts.
         """
         self.reset_reference_answers()
         for question_part in self.question_parts:
+            if not question_part.id.endswith("context"):
+                context = None
             reference_answer = aiTools.generateReferenceAnswerPart(question_part, context)
             self.reference_answer_parts.append(reference_answer)
+
 
     def extract_keywords_from_references(self) -> None:
         """

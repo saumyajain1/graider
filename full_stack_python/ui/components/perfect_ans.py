@@ -58,7 +58,7 @@ def perf_ans_page() -> rx.Component:
         rx.divider(),
         rx.card("Perfect Answer"),
         my_answer,
-        rx.button("Generate Answer from AI"),
+        rx.button("Generate Answer from AI", on_click=api.generate_reference_answers()),
         spacing="5",
         justify="center",
         text_align="centre",
