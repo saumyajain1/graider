@@ -289,13 +289,15 @@ def generateRubricPart(
         rough_rubric: Optional[str] = None
 ) -> RubricPart:
     system_prompt = (
-        "Your task is to create a RubricObject instance for the given question part using the provided reference answer.\n"
+        "Your task is to create a Rubric Part instance for the given question part using the provided reference answer.\n"
         "Instructions:\n"
         "- Generate a rubric in a tabular form consisting of several criteria based on the total marks available for the question part.\n"
         "- Each criterion should reflect the key points addressed in the reference answer and be as concise as possible.\n"
         "- Assign a range of marks for each criterion, clearly explaining the expectations to achieve those marks.\n"
         "- Ensure that each criterion aligns with the learning objectives demonstrated in the reference answer and does not include content outside the syllabus.\n"
-        "- Do not assign negative marks; the minimum mark for any criterion should be zero.\n")
+        "- Do not assign negative marks. The minimum mark for any criterion should be zero.\n"
+        "- Your final Output should be valid JSON."
+        )
     pass  # Function implementation goes here
 
     ret_val_from_AI = ""
