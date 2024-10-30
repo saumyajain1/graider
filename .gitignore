@@ -7,3 +7,4 @@ alembic/
 alembic/ini
 assets/external/
 venv/
+.DS_Store

@@ -54,6 +54,7 @@ class aiTools:
 
         load_dotenv()
         client = Groq()
+
         completion = client.chat.completions.create(
             model="llama-3.2-90b-text-preview",
             messages=[
