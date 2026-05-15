@@ -15,6 +15,11 @@ class Assignment(models.Model):
     class WorkflowStatus(models.TextChoices):
         DRAFT = "draft", "Draft"
         QUESTIONS_READY = "questions_ready", "Questions Ready"
+        REFERENCE_ANSWERS_READY = "reference_answers_ready", "Reference Answers Ready"
+        RUBRIC_READY = "rubric_ready", "Rubric Ready"
+        SUBMISSIONS_UPLOADED = "submissions_uploaded", "Submissions Uploaded"
+        REVIEW_READY = "review_ready", "Review Ready"
+        FINALIZED = "finalized", "Finalized"
 
     teacher = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -39,9 +44,25 @@ class Assignment(models.Model):
 
     @property
     def workflow_status(self):
+        submissions = getattr(self, "submissions", None)
+        if submissions is not None and submissions.exists():
+            if submissions.exclude(grading_status="finalized").count() == 0:
+                return self.WorkflowStatus.FINALIZED
+            if submissions.filter(
+                grading_status__in=["graded", "reviewed", "finalized"]
+            ).exists():
+                return self.WorkflowStatus.REVIEW_READY
+            return self.WorkflowStatus.SUBMISSIONS_UPLOADED
+
         question_parts = self.question_parts.filter(part_type=QuestionPart.PartType.QUESTION)
         if not question_parts.exists():
             return self.WorkflowStatus.DRAFT
+
+        if all(question.rubric_criteria.exists() for question in question_parts):
+            return self.WorkflowStatus.RUBRIC_READY
+
+        if all(hasattr(question, "reference_answer") for question in question_parts):
+            return self.WorkflowStatus.REFERENCE_ANSWERS_READY
 
         return self.WorkflowStatus.QUESTIONS_READY
 

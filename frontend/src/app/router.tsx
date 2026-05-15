@@ -4,6 +4,8 @@ import { ProtectedLayout, PublicOnly } from './routeGuards'
 import { AssignmentCreatePage } from '../pages/AssignmentCreatePage'
 import { AssignmentOverviewPage } from '../pages/AssignmentOverviewPage'
 import { AssignmentQuestionsPage } from '../pages/AssignmentQuestionsPage'
+import { AssignmentReferenceAnswersPage } from '../pages/AssignmentReferenceAnswersPage'
+import { AssignmentRubricPage } from '../pages/AssignmentRubricPage'
 import { DashboardPage } from '../pages/DashboardPage'
 
 export const router = createBrowserRouter([
@@ -20,6 +22,11 @@ export const router = createBrowserRouter([
       { path: 'assignments/:assignmentId', element: <Navigate to="overview" replace /> },
       { path: 'assignments/:assignmentId/overview', element: <AssignmentOverviewPage /> },
       { path: 'assignments/:assignmentId/questions', element: <AssignmentQuestionsPage /> },
+      {
+        path: 'assignments/:assignmentId/reference-answers',
+        element: <AssignmentReferenceAnswersPage />,
+      },
+      { path: 'assignments/:assignmentId/rubric', element: <AssignmentRubricPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

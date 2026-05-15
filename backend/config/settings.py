@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "apps.accounts",
     "apps.assignments",
+    "apps.grading",
 ]
 
 MIDDLEWARE = [

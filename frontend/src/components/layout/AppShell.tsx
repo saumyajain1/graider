@@ -36,20 +36,30 @@ export function AppShell({ children }: PropsWithChildren) {
     assignmentId
       ? { label: 'Questions', to: `/assignments/${assignmentId}/questions` }
       : { label: 'Questions', disabled: true },
+    assignmentId
+      ? { label: 'Reference Answers', to: `/assignments/${assignmentId}/reference-answers` }
+      : { label: 'Reference Answers', disabled: true },
+    assignmentId
+      ? { label: 'Rubric', to: `/assignments/${assignmentId}/rubric` }
+      : { label: 'Rubric', disabled: true },
   ]
 
   const pageTitle =
     location.pathname === '/'
       ? 'Dashboard'
-      : location.pathname.endsWith('/questions')
-        ? 'Question setup'
-        : location.pathname.includes('/assignments/')
-          ? 'Assignment setup'
-          : 'Build your first assignment'
+      : location.pathname.endsWith('/reference-answers')
+        ? 'Reference answers'
+        : location.pathname.endsWith('/rubric')
+          ? 'Rubric builder'
+          : location.pathname.endsWith('/questions')
+            ? 'Question setup'
+            : location.pathname.includes('/assignments/')
+              ? 'Assignment setup'
+              : 'Build your first assignment'
   const footerTitle = assignmentId ? 'Workflow' : 'Start here'
   const footerText = assignmentId
-    ? 'Question setup belongs to the current assignment.'
-    : 'Create or open an assignment to unlock the grading workflow.'
+    ? 'Questions, reference answers, and rubric all belong to the current assignment.'
+    : 'Create or open an assignment to unlock the full grading workflow.'
 
   return (
     <div className="min-h-screen px-4 py-4 text-white md:px-6 md:py-6">
