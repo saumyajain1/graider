@@ -3,14 +3,22 @@ from decimal import Decimal
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.assignments.models import Assignment, QuestionPart
+from apps.assignments.models import Assignment
+from apps.assignments.services import extract_text_from_uploaded_file
 
-from .models import ReferenceAnswer, RubricCriterion
+from .models import (
+    GradingResult,
+    ReferenceAnswer,
+    RubricCriterion,
+    StudentSubmission,
+)
 from .serializers import (
+    GradingResultSerializer,
+    GradingResultReviewSerializer,
     ReferenceAnswerCreateSerializer,
     ReferenceAnswerItemSerializer,
     ReferenceAnswerWriteSerializer,
@@ -18,6 +26,9 @@ from .serializers import (
     RubricCriterionResponseSerializer,
     RubricCriterionWriteSerializer,
     RubricQuestionSerializer,
+    StudentSubmissionSerializer,
+    SubmissionCreateSerializer,
+    SubmissionGradingSerializer,
     build_reference_answer_item,
     build_rubric_question_item,
 )
@@ -26,6 +37,18 @@ from .services import (
     LLMGenerationError,
     generate_reference_answer,
     generate_rubric_criteria,
+)
+from .services.submission_io import (
+    CsvImportError,
+    build_assignment_results_csv_response,
+    import_submissions_from_csv,
+)
+from .services.submission_workflow import (
+    SubmissionNotReadyError,
+    finalize_submission,
+    question_queryset_for_assignment,
+    run_grading_pipeline,
+    save_grading_review,
 )
 
 
@@ -36,10 +59,12 @@ def normalize_rubric_order(question_part):
             item.save(update_fields=("display_order", "updated_at"))
 
 
-def question_queryset_for_assignment(assignment):
-    return assignment.question_parts.filter(part_type=QuestionPart.PartType.QUESTION).order_by(
-        "display_order", "id"
-    )
+def serialize_submission_grading(submission):
+    return {
+        "submission": submission,
+        "answer_parts": submission.answer_parts.all(),
+        "grading_results": submission.grading_results.all(),
+    }
 
 
 class TeacherScopedArtifactView(APIView):
@@ -51,6 +76,13 @@ class TeacherScopedArtifactView(APIView):
             Assignment.objects.select_related("teacher"),
             id=assignment_id,
             teacher=self.request.user,
+        )
+
+    def get_submission(self, submission_id):
+        return get_object_or_404(
+            StudentSubmission.objects.select_related("assignment", "assignment__teacher"),
+            id=submission_id,
+            assignment__teacher=self.request.user,
         )
 
     def get_reference_answer(self, reference_answer_id):
@@ -73,6 +105,18 @@ class TeacherScopedArtifactView(APIView):
             ),
             id=criterion_id,
             question_part__assignment__teacher=self.request.user,
+        )
+
+    def get_grading_result(self, grading_result_id):
+        return get_object_or_404(
+            GradingResult.objects.select_related(
+                "submission",
+                "submission__assignment",
+                "submission__assignment__teacher",
+                "question_part",
+            ),
+            id=grading_result_id,
+            submission__assignment__teacher=self.request.user,
         )
 
     def handle_llm_error(self, exc):
@@ -260,3 +304,148 @@ class RubricCriterionDetailView(TeacherScopedArtifactView):
         criterion.delete()
         normalize_rubric_order(question_part)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SubmissionListCreateView(TeacherScopedArtifactView):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        serializer = StudentSubmissionSerializer(assignment.submissions.all(), many=True)
+        return Response(serializer.data)
+
+    def post(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        serializer = SubmissionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded_file = serializer.validated_data.get("response_file")
+        raw_response_text = serializer.validated_data.get("raw_response_text", "")
+        ingestion_notes = ""
+
+        if uploaded_file is not None:
+            extracted_text, ingestion_notes = extract_text_from_uploaded_file(uploaded_file)
+            if not raw_response_text.strip():
+                raw_response_text = extracted_text
+            if not raw_response_text.strip():
+                detail = ingestion_notes or "No extractable text was found in the uploaded file."
+                return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission = StudentSubmission.objects.create(
+            assignment=assignment,
+            student_name=serializer.validated_data["student_name"],
+            student_identifier=serializer.validated_data.get("student_identifier", ""),
+            raw_response_text=raw_response_text,
+            response_file=uploaded_file,
+            ingestion_notes=ingestion_notes,
+            upload_source=(
+                StudentSubmission.UploadSource.FILE
+                if uploaded_file is not None
+                else StudentSubmission.UploadSource.MANUAL
+            ),
+        )
+        return Response(
+            StudentSubmissionSerializer(submission).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SubmissionImportCsvView(TeacherScopedArtifactView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file is None:
+            return Response(
+                {"detail": "Upload a CSV file in the file field."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            created = import_submissions_from_csv(assignment, uploaded_file)
+        except CsvImportError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(StudentSubmissionSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
+
+
+class SubmissionDetailView(TeacherScopedArtifactView):
+    def get(self, request, submission_id):
+        submission = self.get_submission(submission_id)
+        return Response(StudentSubmissionSerializer(submission).data)
+
+
+class SubmissionGradeView(TeacherScopedArtifactView):
+    def post(self, request, submission_id):
+        submission = self.get_submission(submission_id)
+        try:
+            submission = run_grading_pipeline(submission)
+        except SubmissionNotReadyError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except (LLMConfigurationError, LLMGenerationError) as exc:
+            return self.handle_llm_error(exc)
+
+        return Response(StudentSubmissionSerializer(submission).data)
+
+
+class AssignmentGradeAllView(TeacherScopedArtifactView):
+    def post(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        submissions = list(assignment.submissions.all())
+        if not submissions:
+            return Response(
+                {"detail": "No submissions are available to grade."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        graded = 0
+        failed = 0
+        for submission in submissions:
+            try:
+                run_grading_pipeline(submission)
+                graded += 1
+            except SubmissionNotReadyError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except (LLMConfigurationError, LLMGenerationError):
+                failed += 1
+
+        return Response(
+            {
+                "graded_count": graded,
+                "failed_count": failed,
+                "submissions": StudentSubmissionSerializer(assignment.submissions.all(), many=True).data,
+            }
+        )
+
+
+class SubmissionGradingView(TeacherScopedArtifactView):
+    def get(self, request, submission_id):
+        submission = self.get_submission(submission_id)
+        payload = serialize_submission_grading(submission)
+        return Response(SubmissionGradingSerializer(payload).data)
+
+
+class GradingResultDetailView(TeacherScopedArtifactView):
+    def patch(self, request, grading_result_id):
+        grading_result = self.get_grading_result(grading_result_id)
+        serializer = GradingResultReviewSerializer(
+            data=request.data,
+            context={"grading_result": grading_result},
+        )
+        serializer.is_valid(raise_exception=True)
+        grading_result = save_grading_review(grading_result, **serializer.normalized_data())
+
+        return Response(GradingResultSerializer(grading_result).data)
+
+
+class SubmissionFinalizeView(TeacherScopedArtifactView):
+    def post(self, request, submission_id):
+        submission = self.get_submission(submission_id)
+        submission = finalize_submission(submission)
+        return Response(StudentSubmissionSerializer(submission).data)
+
+
+class AssignmentExportCsvView(TeacherScopedArtifactView):
+    def get(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        return build_assignment_results_csv_response(assignment)

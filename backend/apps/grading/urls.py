@@ -1,12 +1,21 @@
 from django.urls import path
 
 from .views import (
+    AssignmentExportCsvView,
+    AssignmentGradeAllView,
+    GradingResultDetailView,
     ReferenceAnswerDetailView,
     ReferenceAnswerGenerateView,
     ReferenceAnswerListCreateView,
     RubricCriterionDetailView,
     RubricGenerateView,
     RubricListCreateView,
+    SubmissionDetailView,
+    SubmissionFinalizeView,
+    SubmissionGradeView,
+    SubmissionGradingView,
+    SubmissionImportCsvView,
+    SubmissionListCreateView,
 )
 
 urlpatterns = [
@@ -39,5 +48,50 @@ urlpatterns = [
         "rubric-criteria/<int:criterion_id>",
         RubricCriterionDetailView.as_view(),
         name="rubric-criterion-detail",
+    ),
+    path(
+        "assignments/<int:assignment_id>/submissions",
+        SubmissionListCreateView.as_view(),
+        name="submission-list",
+    ),
+    path(
+        "assignments/<int:assignment_id>/submissions/import-csv",
+        SubmissionImportCsvView.as_view(),
+        name="submission-import-csv",
+    ),
+    path(
+        "submissions/<int:submission_id>",
+        SubmissionDetailView.as_view(),
+        name="submission-detail",
+    ),
+    path(
+        "submissions/<int:submission_id>/grade",
+        SubmissionGradeView.as_view(),
+        name="submission-grade",
+    ),
+    path(
+        "assignments/<int:assignment_id>/grade-all",
+        AssignmentGradeAllView.as_view(),
+        name="assignment-grade-all",
+    ),
+    path(
+        "submissions/<int:submission_id>/grading",
+        SubmissionGradingView.as_view(),
+        name="submission-grading",
+    ),
+    path(
+        "grading-results/<int:grading_result_id>",
+        GradingResultDetailView.as_view(),
+        name="grading-result-detail",
+    ),
+    path(
+        "submissions/<int:submission_id>/finalize",
+        SubmissionFinalizeView.as_view(),
+        name="submission-finalize",
+    ),
+    path(
+        "assignments/<int:assignment_id>/export.csv",
+        AssignmentExportCsvView.as_view(),
+        name="assignment-export-csv",
     ),
 ]

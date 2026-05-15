@@ -1,12 +1,27 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from io import BytesIO
+from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework.test import APITestCase
+from reportlab.pdfgen import canvas
 
 from apps.accounts.models import User
 from apps.assignments.models import Assignment, QuestionPart
 
-from .models import ReferenceAnswer, RubricCriterion
+from .services.generation import build_shared_context, generate_question_parts
+from .models import GradingResult, ReferenceAnswer, RubricCriterion, StudentSubmission, SubmissionAnswerPart
+
+
+def build_pdf(text):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer)
+    pdf.drawString(100, 750, text)
+    pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 class GradingArtifactApiTests(APITestCase):
@@ -133,3 +148,398 @@ class GradingArtifactApiTests(APITestCase):
         delete_response = self.client.delete(reverse("rubric-criterion-detail", args=[criterion_id]))
         self.assertEqual(delete_response.status_code, 204)
         self.assertEqual(RubricCriterion.objects.count(), 0)
+
+    def test_csv_import_creates_submissions(self):
+        csv_bytes = (
+            "student_name,student_id,response_text\n"
+            "Alice,1001,Answer one\n"
+            "Bob,1002,Answer two\n"
+        ).encode("utf-8")
+        upload = SimpleUploadedFile("submissions.csv", csv_bytes, content_type="text/csv")
+
+        response = self.client.post(
+            reverse("submission-import-csv", args=[self.assignment.id]),
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(StudentSubmission.objects.count(), 2)
+
+    def test_manual_submission_pdf_upload_extracts_text(self):
+        upload = SimpleUploadedFile(
+            "submission.pdf",
+            build_pdf("Student answer: gradient descent converges."),
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            reverse("submission-list", args=[self.assignment.id]),
+            {
+                "student_name": "Taylor",
+                "student_identifier": "2001",
+                "response_file": upload,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        submission = StudentSubmission.objects.get(student_name="Taylor")
+        self.assertEqual(submission.upload_source, StudentSubmission.UploadSource.FILE)
+        self.assertIn("gradient descent converges", submission.raw_response_text)
+        self.assertIn("submission", submission.response_file.name)
+        self.assertTrue(submission.response_file.name.endswith(".pdf"))
+
+    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    def test_grade_submission_pipeline_with_mocked_llm(
+        self,
+        map_submission_answers_mock,
+        grade_question_part_mock,
+    ):
+        ReferenceAnswer.objects.create(
+            question_part=self.question,
+            answer_text="Reference answer",
+            source=ReferenceAnswer.Source.TEACHER,
+        )
+        RubricCriterion.objects.create(
+            question_part=self.question,
+            title="Definition",
+            description="Defines osmosis correctly.",
+            max_points="5",
+            display_order=0,
+        )
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment,
+            student_name="Alice",
+            raw_response_text="Osmosis is water moving across a membrane.",
+        )
+        map_submission_answers_mock.return_value = SimpleNamespace(
+            answers=[
+                SimpleNamespace(
+                    part_key="Q1",
+                    extracted_answer_text="Osmosis is water moving across a membrane.",
+                    mapping_confidence=0.91,
+                )
+            ]
+        )
+        grade_question_part_mock.return_value = SimpleNamespace(
+            score=4,
+            feedback="Strong definition with room for a clearer example.",
+            reasoning_summary="Correct core idea but missing some specificity.",
+            confidence_score=0.88,
+            needs_review=False,
+        )
+
+        response = self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        submission.refresh_from_db()
+        self.assertEqual(submission.grading_status, StudentSubmission.GradingStatus.GRADED)
+        self.assertEqual(str(submission.total_score), "4.00")
+        self.assertEqual(SubmissionAnswerPart.objects.count(), 1)
+        self.assertEqual(GradingResult.objects.count(), 1)
+
+    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    def test_grade_all_returns_summary(
+        self,
+        map_submission_answers_mock,
+        grade_question_part_mock,
+    ):
+        ReferenceAnswer.objects.create(
+            question_part=self.question,
+            answer_text="Reference answer",
+            source=ReferenceAnswer.Source.TEACHER,
+        )
+        RubricCriterion.objects.create(
+            question_part=self.question,
+            title="Definition",
+            description="Defines osmosis correctly.",
+            max_points="5",
+            display_order=0,
+        )
+        StudentSubmission.objects.create(
+            assignment=self.assignment,
+            student_name="Alice",
+            raw_response_text="Answer one",
+        )
+        StudentSubmission.objects.create(
+            assignment=self.assignment,
+            student_name="Bob",
+            raw_response_text="Answer two",
+        )
+        map_submission_answers_mock.return_value = SimpleNamespace(
+            answers=[
+                SimpleNamespace(
+                    part_key="Q1",
+                    extracted_answer_text="Mapped answer.",
+                    mapping_confidence=0.75,
+                )
+            ]
+        )
+        grade_question_part_mock.return_value = SimpleNamespace(
+            score=3,
+            feedback="Adequate response.",
+            reasoning_summary="Covers the main point.",
+            confidence_score=0.8,
+            needs_review=False,
+        )
+
+        response = self.client.post(
+            reverse("assignment-grade-all", args=[self.assignment.id]),
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["graded_count"], 2)
+        self.assertEqual(response.data["failed_count"], 0)
+
+    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    def test_submission_grading_endpoint_returns_nested_payload(
+        self,
+        map_submission_answers_mock,
+        grade_question_part_mock,
+    ):
+        ReferenceAnswer.objects.create(
+            question_part=self.question,
+            answer_text="Reference answer",
+            source=ReferenceAnswer.Source.TEACHER,
+        )
+        RubricCriterion.objects.create(
+            question_part=self.question,
+            title="Definition",
+            description="Defines osmosis correctly.",
+            max_points="5",
+            display_order=0,
+        )
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment,
+            student_name="Casey",
+            raw_response_text="Osmosis is water crossing a membrane.",
+        )
+        map_submission_answers_mock.return_value = SimpleNamespace(
+            answers=[
+                SimpleNamespace(
+                    part_key="Q1",
+                    extracted_answer_text="Osmosis is water crossing a membrane.",
+                    mapping_confidence=0.9,
+                )
+            ]
+        )
+        grade_question_part_mock.return_value = SimpleNamespace(
+            score=4,
+            feedback="Strong answer.",
+            reasoning_summary="Covers the key idea.",
+            confidence_score=0.86,
+            needs_review=False,
+        )
+
+        self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        response = self.client.get(reverse("submission-grading", args=[submission.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["submission"]["student_name"], "Casey")
+        self.assertEqual(len(response.data["answer_parts"]), 1)
+        self.assertEqual(len(response.data["grading_results"]), 1)
+
+    def test_review_patch_updates_total_and_marks_submission_reviewed(self):
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment,
+            student_name="Dana",
+            raw_response_text="Answer",
+        )
+        result = GradingResult.objects.create(
+            submission=submission,
+            question_part=self.question,
+            ai_score="3",
+            final_score="3",
+            max_score="5",
+            ai_feedback="AI feedback",
+            final_feedback="AI feedback",
+        )
+
+        response = self.client.patch(
+            reverse("grading-result-detail", args=[result.id]),
+            {
+                "final_score": "4.50",
+                "final_feedback": "Teacher-adjusted feedback.",
+                "needs_review": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        submission.refresh_from_db()
+        result.refresh_from_db()
+        self.assertEqual(str(submission.total_score), "4.50")
+        self.assertEqual(submission.grading_status, StudentSubmission.GradingStatus.REVIEWED)
+        self.assertEqual(str(result.final_score), "4.50")
+        self.assertEqual(result.final_feedback, "Teacher-adjusted feedback.")
+
+    def test_finalize_and_export_csv(self):
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment,
+            student_name="Elliot",
+            student_identifier="E-1",
+            raw_response_text="Answer",
+        )
+        GradingResult.objects.create(
+            submission=submission,
+            question_part=self.question,
+            ai_score="4",
+            final_score="4.50",
+            max_score="5",
+            ai_feedback="AI feedback",
+            final_feedback="Final feedback",
+        )
+
+        finalize_response = self.client.post(
+            reverse("submission-finalize", args=[submission.id]),
+            {},
+            format="json",
+        )
+        export_response = self.client.get(reverse("assignment-export-csv", args=[self.assignment.id]))
+
+        self.assertEqual(finalize_response.status_code, 200)
+        submission.refresh_from_db()
+        self.assertEqual(submission.grading_status, StudentSubmission.GradingStatus.FINALIZED)
+        self.assertEqual(str(submission.total_score), "4.50")
+        self.assertIsNotNone(submission.finalized_at)
+
+        self.assertEqual(export_response.status_code, 200)
+        self.assertEqual(export_response["Content-Type"], "text/csv")
+        content = export_response.content.decode("utf-8")
+        self.assertIn("student_name,student_identifier,grading_status,total_score,finalized_at,Q1_score,Q1_feedback", content)
+        self.assertIn("Elliot,E-1,finalized,4.50", content)
+        self.assertIn("Final feedback", content)
+
+
+class QuestionGenerationServiceTests(TestCase):
+    @patch("apps.grading.services.generation.question_set_needs_repair", return_value=False)
+    @patch("apps.grading.services.generation.OpenAIChatService.parse")
+    def test_generate_question_parts_uses_structured_pdf_parser_for_q1_split(
+        self,
+        parse_mock,
+        _needs_repair_mock,
+    ):
+        assignment = SimpleNamespace(
+            title="Assignment 1 - Q1",
+            course_name="CPSC 440",
+            description="Covers complex matrix algebra questions",
+            raw_assignment_text=(
+                "1 Matrix Notation, Quadratics, Convexity, and Gradients [30 points]\n"
+                "Some of the notes on the course page might be useful to refresh some mathematical tools.\n"
+                "Each part is worth [3 points].\n"
+                "[1.1] Consider the function f(x). Answer: TODO\n"
+                "[1.2] Write the gradient of f from the previous question, in matrix notation. Answer: TODO\n"
+                "[1.3] Show that f is convex if A is a symmetric, positive semi-definite matrix. Answer: TODO\n"
+                "[1.4] When A is symmetric and strictly positive definite, give a linear system whose solution minimizes f in terms of x. Answer: TODO\n"
+                "[1.5] Suppose that A is not symmetric, but A + A^T is strictly positive definite. Characterize the minimizers of f. Answer: TODO\n"
+                "[1.6] Suppose that A is symmetric and only positive semi-definite. Will gradient descent necessarily find one of the solutions? Answer: TODO\n"
+                "[1.7] Show that the support vector regression objective is convex. Answer: TODO\n"
+                "[1.8] Consider weighted linear regression with an L2 regularizer. Write this function in matrix notation. Answer: TODO\n"
+                "[1.9] Assuming that v(i) >= 0 for all i, show that f from the previous part is convex. Answer: TODO\n"
+                "[1.10] Assuming that we have v(i) >= 0 for all i, give a linear system whose solution minimizes f in terms of w. Answer: TODO\n"
+                "2 K-means Clustering [25 points]\n"
+                "[2.1] Complete KMeans.loss. Answer: TODO\n"
+            ),
+            source_file=SimpleNamespace(name="cpsc440_a1_q1_question_split.pdf"),
+        )
+
+        result = generate_question_parts(assignment)
+
+        self.assertEqual(len(result.parts), 11)
+        self.assertEqual(result.parts[0].part_type, "context")
+        self.assertEqual(result.parts[0].source_label, "1")
+        self.assertIn("Some of the notes on the course page", result.parts[0].text)
+        self.assertIn("Consider the function", result.parts[0].text)
+
+        question_parts = [part for part in result.parts if part.part_type == "question"]
+        self.assertEqual(len(question_parts), 10)
+        self.assertEqual(question_parts[0].source_label, "1.1")
+        self.assertEqual(question_parts[-1].source_label, "1.10")
+        self.assertTrue(all(part.parent_key == "1" for part in question_parts))
+        self.assertTrue(all(part.max_marks == 3 for part in question_parts))
+        self.assertTrue(question_parts[0].text.startswith("Consider the function"))
+        self.assertTrue(question_parts[-1].text.startswith("Assuming that we have v(i) >= 0"))
+        parse_mock.assert_not_called()
+
+    def test_build_shared_context_uses_context_parts_and_referenced_siblings(self):
+        user = User.objects.create_user(
+            email="context@example.com",
+            full_name="Context User",
+            password="StrongPass123!",
+        )
+        assignment = Assignment.objects.create(
+            teacher=user,
+            title="Context Assignment",
+            raw_assignment_text="Question 1",
+        )
+        QuestionPart.objects.create(
+            assignment=assignment,
+            part_key="Q1",
+            source_label="1",
+            parent_key="1",
+            part_type=QuestionPart.PartType.CONTEXT,
+            text="Consider the function f(x) = x^T A x + b^T x + c.",
+            max_marks="0",
+            display_order=0,
+        )
+        first_question = QuestionPart.objects.create(
+            assignment=assignment,
+            part_key="Q2",
+            source_label="1.1",
+            parent_key="1",
+            part_type=QuestionPart.PartType.QUESTION,
+            text="Write the function in matrix notation.",
+            max_marks="3",
+            display_order=1,
+        )
+        second_question = QuestionPart.objects.create(
+            assignment=assignment,
+            part_key="Q3",
+            source_label="1.2",
+            parent_key="1",
+            part_type=QuestionPart.PartType.QUESTION,
+            text="Write the gradient of f from the previous question in matrix notation.",
+            max_marks="3",
+            display_order=2,
+        )
+
+        shared_context = build_shared_context(second_question)
+
+        self.assertIn("Shared context 1", shared_context)
+        self.assertIn("Consider the function f(x)", shared_context)
+        self.assertIn("Previous part 1.1", shared_context)
+        self.assertIn(first_question.text, shared_context)
+
+    def test_generate_question_parts_ignores_formula_lines_when_finding_sections(self):
+        assignment = SimpleNamespace(
+            title="Assignment 1 - Q1",
+            course_name="CPSC 440",
+            description="Math-heavy prompt",
+            raw_assignment_text=(
+                "1 Matrix Notation [30 points]\n"
+                "Each part is worth [3 points].\n"
+                "[1.1] Consider the function f(x).\n"
+                "Answer: TODO\n"
+                "[1.2] Write the gradient.\n"
+                "Answer: TODO\n"
+                "[1.8] Consider weighted linear regression.\n"
+                "2 ∥w∥2\n"
+                "Answer: TODO\n"
+                "[1.9] Show that the function is convex.\n"
+                "Answer: TODO\n"
+                "[1.10] Give the minimizing linear system.\n"
+                "Answer: TODO\n"
+            ),
+            source_file=SimpleNamespace(name="cpsc440_a1_q1_question_split.pdf"),
+        )
+
+        result = generate_question_parts(assignment)
+        question_labels = [part.source_label for part in result.parts if part.part_type == "question"]
+
+        self.assertEqual(question_labels, ["1.1", "1.2", "1.8", "1.9", "1.10"])
