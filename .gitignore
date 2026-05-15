@@ -1,0 +1,10 @@
+.DS_Store
+.venv/
+backend/db.sqlite3
+backend/media/
+frontend/dist/
+frontend/node_modules/
+__pycache__/
+*.pyc
+.env
+NEXT_TASKS.md
