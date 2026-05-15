@@ -42,23 +42,35 @@ export function AppShell({ children }: PropsWithChildren) {
     assignmentId
       ? { label: 'Rubric', to: `/assignments/${assignmentId}/rubric` }
       : { label: 'Rubric', disabled: true },
+    assignmentId
+      ? { label: 'Submissions', to: `/assignments/${assignmentId}/submissions` }
+      : { label: 'Submissions', disabled: true },
+    assignmentId
+      ? { label: 'Review', to: `/assignments/${assignmentId}/review` }
+      : { label: 'Review', disabled: true },
   ]
 
   const pageTitle =
     location.pathname === '/'
       ? 'Dashboard'
-      : location.pathname.endsWith('/reference-answers')
-        ? 'Reference answers'
-        : location.pathname.endsWith('/rubric')
-          ? 'Rubric builder'
-          : location.pathname.endsWith('/questions')
-            ? 'Question setup'
-            : location.pathname.includes('/assignments/')
-              ? 'Assignment setup'
-              : 'Build your first assignment'
+      : location.pathname.includes('/review/')
+        ? 'Student review'
+        : location.pathname.endsWith('/review')
+          ? 'Review queue'
+          : location.pathname.endsWith('/reference-answers')
+            ? 'Reference answers'
+            : location.pathname.endsWith('/rubric')
+              ? 'Rubric builder'
+              : location.pathname.endsWith('/submissions')
+                ? 'Submission intake'
+                : location.pathname.endsWith('/questions')
+                  ? 'Question setup'
+                  : location.pathname.includes('/assignments/')
+                    ? 'Assignment setup'
+                    : 'Build your first assignment'
   const footerTitle = assignmentId ? 'Workflow' : 'Start here'
   const footerText = assignmentId
-    ? 'Questions, reference answers, and rubric all belong to the current assignment.'
+    ? 'Questions, reference answers, rubric, submissions, and review all belong to the current assignment.'
     : 'Create or open an assignment to unlock the full grading workflow.'
 
   return (

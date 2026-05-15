@@ -5,8 +5,11 @@ import { AssignmentCreatePage } from '../pages/AssignmentCreatePage'
 import { AssignmentOverviewPage } from '../pages/AssignmentOverviewPage'
 import { AssignmentQuestionsPage } from '../pages/AssignmentQuestionsPage'
 import { AssignmentReferenceAnswersPage } from '../pages/AssignmentReferenceAnswersPage'
+import { AssignmentReviewPage } from '../pages/AssignmentReviewPage'
 import { AssignmentRubricPage } from '../pages/AssignmentRubricPage'
+import { AssignmentSubmissionsPage } from '../pages/AssignmentSubmissionsPage'
 import { DashboardPage } from '../pages/DashboardPage'
+import { SubmissionReviewPage } from '../pages/SubmissionReviewPage'
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +30,12 @@ export const router = createBrowserRouter([
         element: <AssignmentReferenceAnswersPage />,
       },
       { path: 'assignments/:assignmentId/rubric', element: <AssignmentRubricPage /> },
+      { path: 'assignments/:assignmentId/submissions', element: <AssignmentSubmissionsPage /> },
+      { path: 'assignments/:assignmentId/review', element: <AssignmentReviewPage /> },
+      {
+        path: 'assignments/:assignmentId/review/:submissionId',
+        element: <SubmissionReviewPage />,
+      },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
