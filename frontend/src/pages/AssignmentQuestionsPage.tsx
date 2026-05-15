@@ -5,12 +5,14 @@ import { Link, useParams } from 'react-router-dom'
 import {
   createQuestion,
   deleteQuestion,
+  generateQuestions,
   getAssignment,
   listQuestions,
   reorderQuestions,
   updateQuestion,
   type QuestionPart,
 } from '../api/assignments'
+import { getApiErrorMessage } from '../api/errors'
 
 type QuestionEditorPayload = {
   source_label?: string
@@ -228,6 +230,15 @@ export function AssignmentQuestionsPage() {
     },
   })
 
+  const generateMutation = useMutation({
+    mutationFn: () => generateQuestions(assignmentId!, true),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
+    },
+  })
+
   if (assignmentQuery.isPending || questionsQuery.isPending) {
     return <div className="text-sm text-slate-600">Loading questions...</div>
   }
@@ -248,8 +259,9 @@ export function AssignmentQuestionsPage() {
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Create the question structure explicitly now. Manual editing remains the
-            source of truth for the assignment workflow.
+            Create the question structure explicitly now. In the next phase, AI will be
+            able to generate question parts automatically, but manual editing remains the
+            source of truth.
           </p>
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold text-slate-500">
             <span className="rounded-full bg-slate-100 px-3 py-1">
@@ -263,7 +275,7 @@ export function AssignmentQuestionsPage() {
 
         <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
           <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
-            Question map
+            AI generation
           </p>
           <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
             Questions become the backbone for answers and rubric generation.
@@ -278,16 +290,32 @@ export function AssignmentQuestionsPage() {
           >
             Back to overview
           </Link>
+          <button
+            type="button"
+            onClick={() => void generateMutation.mutateAsync()}
+            className="mt-3 inline-flex rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+          >
+            {generateMutation.isPending
+              ? 'Overwriting...'
+              : 'Overwrite questions from current assignment text'}
+          </button>
         </div>
       </section>
+
+      {generateMutation.isError ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {getApiErrorMessage(generateMutation.error)}
+        </div>
+      ) : null}
 
       <section className="rounded-[2rem] border border-slate-200 p-6">
         <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
           Add question part
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Context rows can carry shared setup for a top-level question like 1, while
-          source labels preserve the original numbering like 1.1 and 1.2.
+          You can add parts manually or use AI generation above. Context rows can carry
+          shared setup for a top-level question like 1, while source labels preserve the
+          original numbering like 1.1 and 1.2.
         </p>
         <div className="mt-5 grid gap-4 lg:grid-cols-[0.18fr_0.18fr_0.18fr_0.16fr_1fr_auto]">
           <input

@@ -130,3 +130,10 @@ export function reorderQuestions(assignmentId: string, questionIds: number[]) {
     body: JSON.stringify({ question_ids: questionIds }),
   })
 }
+
+export function generateQuestions(assignmentId: string, replaceExisting = true) {
+  return apiRequest<QuestionPart[]>(`/api/assignments/${assignmentId}/questions/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ replace_existing: replaceExisting }),
+  })
+}

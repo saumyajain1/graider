@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
   deleteAssignment,
+  generateQuestions,
   getAssignment,
   updateAssignment,
   type AssignmentPayload,
@@ -50,6 +51,18 @@ export function AssignmentOverviewPage() {
     },
   })
 
+  const regenerateMutation = useMutation({
+    mutationFn: async (payload: AssignmentPayload) => {
+      await updateAssignment(assignmentId!, payload)
+      return generateQuestions(assignmentId!, true)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteAssignment(assignmentId!),
     onSuccess: async () => {
@@ -89,6 +102,10 @@ export function AssignmentOverviewPage() {
             Keep the raw assignment text clean here before you decompose it into
             question parts. If file extraction was messy, correct it directly in the
             editor below.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            If you replace the uploaded file, save here and then regenerate questions to
+            overwrite the existing structure from the current file/text.
           </p>
 
           {assignment.ingestion_notes ? (
@@ -213,6 +230,15 @@ export function AssignmentOverviewPage() {
           </div>
         ) : null}
 
+        {regenerateMutation.isError ? (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {getApiErrorMessage(
+              regenerateMutation.error,
+              'Something went wrong while updating the assignment.',
+            )}
+          </div>
+        ) : null}
+
         {updateMutation.isSuccess ? (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             Assignment saved.
@@ -226,6 +252,16 @@ export function AssignmentOverviewPage() {
             className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {updateMutation.isPending ? 'Saving...' : 'Save assignment'}
+          </button>
+          <button
+            type="button"
+            disabled={regenerateMutation.isPending}
+            onClick={() => void regenerateMutation.mutateAsync(form)}
+            className="rounded-full border border-fuchsia-300 px-5 py-3 text-sm font-semibold text-fuchsia-700 transition hover:bg-fuchsia-50 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {regenerateMutation.isPending
+              ? 'Saving and regenerating...'
+              : 'Overwrite questions from current file/text'}
           </button>
           <Link
             to={`/assignments/${assignment.id}/questions`}

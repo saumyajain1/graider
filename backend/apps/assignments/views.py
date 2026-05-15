@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
@@ -6,7 +8,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Assignment, QuestionPart
-from .serializers import AssignmentSerializer, QuestionPartSerializer
+from .serializers import AssignmentSerializer, QuestionPartSerializer, build_part_key
+from apps.grading.services import (
+    LLMConfigurationError,
+    LLMGenerationError,
+    generate_question_parts,
+)
 
 
 def normalize_question_order(assignment):
@@ -95,6 +102,58 @@ class QuestionListCreateView(TeacherScopedView):
         serializer.is_valid(raise_exception=True)
         question = serializer.save()
         return Response(QuestionPartSerializer(question).data, status=status.HTTP_201_CREATED)
+
+
+class QuestionGenerateView(TeacherScopedView):
+    parser_classes = [JSONParser]
+
+    def post(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        replace_existing = request.data.get("replace_existing", True)
+
+        if not assignment.raw_assignment_text.strip():
+            return Response(
+                {"detail": "Assignment text is empty. Add or upload text before generating questions."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            parsed = generate_question_parts(assignment)
+        except LLMConfigurationError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except LLMGenerationError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        with transaction.atomic():
+            if replace_existing:
+                assignment.question_parts.all().delete()
+
+            starting_order = assignment.question_parts.count()
+            created_questions = []
+            for index, part in enumerate(parsed.parts):
+                part_key = build_part_key(assignment)
+                created_questions.append(
+                    QuestionPart.objects.create(
+                        assignment=assignment,
+                        part_key=part_key,
+                        source_label=(getattr(part, "source_label", None) or part_key).strip(),
+                        parent_key=getattr(part, "parent_key", None) or "",
+                        part_type=part.part_type,
+                        text=part.text,
+                        max_marks=Decimal(str(part.max_marks)) if part.max_marks is not None else None,
+                        display_order=starting_order + index,
+                        created_by_ai=True,
+                    )
+                )
+
+        serializer = QuestionPartSerializer(created_questions, many=True)
+        return Response(serializer.data)
 
 
 class QuestionDetailView(TeacherScopedView):
