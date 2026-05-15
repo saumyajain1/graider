@@ -1,0 +1,8 @@
+Django==5.2.12
+django-cors-headers==4.9.0
+djangorestframework==3.17.1
+openai==2.29.0
+pydantic==2.12.5
+pypdf==6.9.2
+python-dotenv==1.2.2
+reportlab==4.4.10
