@@ -4,7 +4,7 @@ Graider is a local-first MVP for AI-assisted grading. It lets a teacher:
 
 - register and sign in
 - create an assignment from pasted text, `.txt`, or `.pdf`
-- generate questions, reference answers, and rubric criteria with OpenAI
+- generate questions, reference answers, and rubric criteria with an OpenAI LLM
 - add student submissions manually or by CSV
 - run an AI grading pass
 - review and edit scores and feedback
