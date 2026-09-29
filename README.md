@@ -18,8 +18,8 @@ Graider is a local-first MVP for AI-assisted grading. It lets a teacher:
 
 ## Local setup
 
-1. Copy `.env.example` to `.env`.
-2. Set `OPENAI_API_KEY` in `.env`.
+1. Copy `.env.example` to `.env` (or keep an existing `.env` and add missing settings).
+2. Set `OPENAI_API_KEY` in `.env` and replace the example `DJANGO_SECRET_KEY` with a unique local value. Keep `DJANGO_DEBUG=true` to use local SQLite.
 3. Create and activate a virtualenv, then install backend dependencies:
 
 ```bash
@@ -58,6 +58,14 @@ npm run dev
 ```
 
 Open `http://localhost:5173`.
+
+## Production configuration (Step 1)
+
+The backend reads a PostgreSQL `DATABASE_URL` when supplied. A populated local `DATABASE_URL` makes local commands use that database; leave it empty to use local SQLite. With `DJANGO_DEBUG=false`, the backend requires `DJANGO_SECRET_KEY`, explicit `DJANGO_ALLOWED_HOSTS` (hostnames only), and a PostgreSQL `DATABASE_URL`; it will not fall back to SQLite. Keep real values in Render environment settings, not in Git or the deployed `.env` file. Neon connection URLs normally include `sslmode=require`.
+
+For the planned same-origin Render deployment, leave `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, and `DJANGO_CSRF_TRUSTED_ORIGINS` empty. Set the latter two to comma-separated full origins only if a separate frontend needs access. Production enables HTTPS-aware proxy handling and secure session/CSRF cookies.
+
+Apply Django migrations to a fresh PostgreSQL database before use. The existing local SQLite data is intentionally not copied.
 
 ## CSV format
 
