@@ -13,7 +13,7 @@ export type AuthPayload = {
 }
 
 export async function fetchCurrentUser() {
-  return apiRequest<CurrentUser>('/api/auth/me', { timeoutMs: 5000 })
+  return apiRequest<CurrentUser>('/api/auth/me', { timeoutMs: 90000 })
 }
 
 export async function login(payload: AuthPayload) {

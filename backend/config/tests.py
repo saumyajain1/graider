@@ -2,8 +2,10 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from django.test import SimpleTestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 
 from .settings import BASE_DIR
 
@@ -19,6 +21,9 @@ class ProductionSettingsTests(SimpleTestCase):
             FRONTEND_URL="",
             DJANGO_CORS_ALLOWED_ORIGINS="",
             DJANGO_CSRF_TRUSTED_ORIGINS="",
+            AWS_ENDPOINT_URL_S3="https://storage.example.invalid",
+            AWS_ACCESS_KEY_ID="test-access-key",
+            AWS_SECRET_ACCESS_KEY="test-secret-key",
         )
         env.update(overrides)
         code = (
@@ -88,3 +93,65 @@ class ProductionSettingsTests(SimpleTestCase):
         result = self.load_settings(DJANGO_DEBUG="perhaps")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("DJANGO_DEBUG", result.stderr)
+
+
+class FrontendRouteTests(SimpleTestCase):
+    def test_spa_routes_use_built_index_without_swallowing_reserved_paths(self):
+        with TemporaryDirectory() as directory:
+            Path(directory, "index.html").write_text("<title>Graider test build</title>")
+            with override_settings(FRONTEND_DIST_DIR=Path(directory)):
+                for route in ("/", "/login", "/assignments/12/questions"):
+                    response = self.client.get(route, HTTP_HOST="localhost")
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn(b"Graider test build", b"".join(response.streaming_content))
+                    self.assertEqual(response["Cache-Control"], "no-store")
+
+                for route in ("/api/missing", "/static/missing.js", "/favicon.ico"):
+                    self.assertEqual(self.client.get(route, HTTP_HOST="localhost").status_code, 404)
+
+                health = self.client.get("/health/", HTTP_HOST="localhost")
+                self.assertEqual(health.status_code, 200)
+                self.assertEqual(health.json(), {"status": "ok"})
+
+    def test_spa_returns_404_until_frontend_is_built(self):
+        with TemporaryDirectory() as directory:
+            with override_settings(FRONTEND_DIST_DIR=Path(directory)):
+                self.assertEqual(self.client.get("/", HTTP_HOST="localhost").status_code, 404)
+
+
+class SameOriginAuthTests(TestCase):
+    @override_settings(
+        DEBUG=False,
+        SECURE_SSL_REDIRECT=False,
+        CSRF_COOKIE_SECURE=True,
+        SESSION_COOKIE_SECURE=True,
+    )
+    def test_built_page_and_api_share_session_and_csrf_cookie(self):
+        with TemporaryDirectory() as directory:
+            Path(directory, "index.html").write_text("<title>Graider test build</title>")
+            with override_settings(FRONTEND_DIST_DIR=Path(directory)):
+                client = Client(enforce_csrf_checks=True, HTTP_HOST="localhost")
+                self.assertEqual(client.get("/", secure=True).status_code, 200)
+                initial = client.get("/api/auth/me", secure=True)
+                self.assertEqual(initial.status_code, 401)
+                csrf_token = initial.cookies["csrftoken"].value
+                self.assertTrue(initial.cookies["csrftoken"]["secure"])
+
+                registered = client.post(
+                    "/api/auth/register",
+                    json.dumps({
+                        "email": "same-origin@example.com",
+                        "full_name": "Same Origin",
+                        "password": "StrongPass123!",
+                    }),
+                    content_type="application/json",
+                    HTTP_X_CSRFTOKEN=csrf_token,
+                    secure=True,
+                )
+                self.assertEqual(registered.status_code, 201)
+                self.assertIn("sessionid", registered.cookies)
+                self.assertTrue(registered.cookies["sessionid"]["secure"])
+                self.assertEqual(
+                    client.get("/api/auth/me", secure=True).json()["email"],
+                    "same-origin@example.com",
+                )

@@ -56,14 +56,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new ApiError(
-        'Request timed out. Make sure the Django backend is running and refresh the page.',
+        'Graider is taking longer than expected to wake. Refresh in a moment.',
         0,
         null,
       )
     }
 
     throw new ApiError(
-      'Could not reach the Graider backend. Make sure both the backend and Vite dev server are running.',
+      'Could not connect to Graider. Please try again in a moment.',
       0,
       null,
     )

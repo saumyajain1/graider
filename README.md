@@ -71,7 +71,21 @@ Apply Django migrations to a fresh PostgreSQL database before use. The existing 
 
 Production requires a private Neon Object Storage bucket. Create or use the `uploads` bucket on the same Neon branch as `DATABASE_URL`, then set `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `NEON_STORAGE_BUCKET` in Render. For local testing against Neon, put the same values in the ignored `.env`; leave the three credential/endpoint values empty to use local file storage while `DJANGO_DEBUG=true`. Do not commit credentials. The backend rejects production startup if object storage is not configured.
 
-Original assignment, submission, and CSV files are stored privately. Graider returns authenticated download paths; Neon download links are signed for 60 seconds after the requesting teacher's ownership is checked. Upload limits are configurable through the `GRAIDER_MAX_*` settings in `.env.example`. Apply the new Django migrations before enabling uploads in production.
+Original assignment, submission, and CSV files are stored privately. Graider returns authenticated download paths; Neon download links are signed for 60 seconds after the requesting teacher's ownership is checked. Upload limits are configurable through the `GRAIDER_MAX_*` settings in `.env.example`. Apply Django's initial migrations before enabling uploads in production.
+
+## Same-origin production build (Step 3)
+
+Build React before collecting Django static files:
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+.venv/bin/python backend/manage.py collectstatic --noinput
+```
+
+Django serves the React page for browser routes, and WhiteNoise serves its compiled assets from `/static/frontend/`. The API remains under `/api/` on the same origin; original uploads remain in private Neon storage. `GET /health/` provides a lightweight health check. The deployment build/start commands are configured in a later step.
 
 ## CSV format
 

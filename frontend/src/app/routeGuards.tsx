@@ -56,7 +56,7 @@ export function PublicOnly() {
             Graider
           </p>
           <h1 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Backend unavailable
+            Graider unavailable
           </h1>
           <p className="mt-4 text-sm text-fuchsia-50/70">{error.message}</p>
         </div>
