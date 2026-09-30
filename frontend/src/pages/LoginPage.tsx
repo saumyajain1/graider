@@ -32,24 +32,22 @@ export function LoginPage() {
               Grade written work with a structured AI workflow.
             </h1>
             <p className="mt-6 text-base text-fuchsia-50/78">
-              Build assignments, generate grading artifacts, review AI suggestions,
-              and finalize marks without turning the product into a chatbot.
+              Build assignments, generate grading artifacts, review AI suggestions, and finalize
+              marks without turning the product into a chatbot.
             </p>
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {[
-              'Teacher-owned workflow',
-              'Editable AI outputs',
-              'Question-by-question review',
-            ].map((value) => (
-              <div
-                key={value}
-                className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-fuchsia-50/75"
-              >
-                {value}
-              </div>
-            ))}
+            {['Teacher-owned workflow', 'Editable AI outputs', 'Question-by-question review'].map(
+              (value) => (
+                <div
+                  key={value}
+                  className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-fuchsia-50/75"
+                >
+                  {value}
+                </div>
+              ),
+            )}
           </div>
         </section>
 
@@ -61,9 +59,7 @@ export function LoginPage() {
                 type="button"
                 onClick={() => setMode(entry)}
                 className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  mode === entry
-                    ? 'bg-slate-950 text-white'
-                    : 'text-slate-600 hover:text-slate-950'
+                  mode === entry ? 'bg-slate-950 text-white' : 'text-slate-600 hover:text-slate-950'
                 }`}
               >
                 {entry === 'login' ? 'Sign in' : 'Create account'}
@@ -92,9 +88,7 @@ export function LoginPage() {
           >
             {mode === 'register' ? (
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">
-                  Full name
-                </span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">Full name</span>
                 <input
                   required
                   value={form.full_name}
@@ -122,9 +116,7 @@ export function LoginPage() {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Password
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Password</span>
               <input
                 required
                 type="password"

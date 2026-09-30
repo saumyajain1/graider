@@ -131,9 +131,7 @@ export function AppShell({ children }: PropsWithChildren) {
               <p className="text-xs font-semibold tracking-[0.2em] text-fuchsia-100/60 uppercase">
                 Assignment workspace
               </p>
-              <h2 className="mt-2 font-['Space_Grotesk'] text-2xl font-bold">
-                {pageTitle}
-              </h2>
+              <h2 className="mt-2 font-['Space_Grotesk'] text-2xl font-bold">{pageTitle}</h2>
             </div>
             <div className="flex items-center gap-3">
               {assignmentId ? (
@@ -157,9 +155,7 @@ export function AppShell({ children }: PropsWithChildren) {
             </div>
           </header>
 
-          <main className="app-card min-h-[calc(100vh-10rem)] flex-1 p-6 md:p-8">
-            {children}
-          </main>
+          <main className="app-card min-h-[calc(100vh-10rem)] flex-1 p-6 md:p-8">{children}</main>
         </div>
       </div>
     </div>

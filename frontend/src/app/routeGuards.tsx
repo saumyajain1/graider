@@ -12,12 +12,8 @@ export function ProtectedLayout() {
     return (
       <div className="flex min-h-screen items-center justify-center px-6 text-center text-white">
         <div className="glass-panel max-w-md px-10 py-12">
-          <p className="font-medium tracking-[0.2em] text-fuchsia-100/70 uppercase">
-            Graider
-          </p>
-          <h1 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Loading workspace
-          </h1>
+          <p className="font-medium tracking-[0.2em] text-fuchsia-100/70 uppercase">Graider</p>
+          <h1 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">Loading workspace</h1>
           <p className="mt-4 text-sm text-fuchsia-50/70">
             Checking your teacher session and preparing the grading shell.
           </p>
@@ -52,12 +48,8 @@ export function PublicOnly() {
     return (
       <div className="flex min-h-screen items-center justify-center px-6 text-center text-white">
         <div className="glass-panel max-w-md px-10 py-12">
-          <p className="font-medium tracking-[0.2em] text-fuchsia-100/70 uppercase">
-            Graider
-          </p>
-          <h1 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Graider unavailable
-          </h1>
+          <p className="font-medium tracking-[0.2em] text-fuchsia-100/70 uppercase">Graider</p>
+          <h1 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">Graider unavailable</h1>
           <p className="mt-4 text-sm text-fuchsia-50/70">{error.message}</p>
         </div>
       </div>

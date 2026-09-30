@@ -1,19 +1,25 @@
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from io import BytesIO
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import TestCase, override_settings
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
-from rest_framework.test import APITestCase
 from reportlab.pdfgen import canvas
+from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
 from apps.assignments.models import Assignment, QuestionPart
 
+from .models import (
+    GradingResult,
+    ReferenceAnswer,
+    RubricCriterion,
+    StudentSubmission,
+    SubmissionAnswerPart,
+)
 from .services.generation import build_shared_context, generate_question_parts
-from .models import GradingResult, ReferenceAnswer, RubricCriterion, StudentSubmission, SubmissionAnswerPart
 
 
 def build_pdf(text):
@@ -86,11 +92,13 @@ class GradingArtifactApiTests(APITestCase):
             self.client.get(reverse("submission-detail", args=[other_submission.id])),
             self.client.patch(
                 reverse("reference-answer-detail", args=[other_answer.id]),
-                {"answer_text": "Changed"}, format="json",
+                {"answer_text": "Changed"},
+                format="json",
             ),
             self.client.patch(
                 reverse("grading-result-detail", args=[other_result.id]),
-                {"final_score": "4"}, format="json",
+                {"final_score": "4"},
+                format="json",
             ),
         ):
             self.assertEqual(response.status_code, 404)
@@ -101,7 +109,9 @@ class GradingArtifactApiTests(APITestCase):
         self.assertIsNone(other_result.final_score)
 
     @patch("apps.grading.views.generate_reference_answer")
-    def test_reference_answer_generation_surfaces_llm_failures(self, generate_reference_answer_mock):
+    def test_reference_answer_generation_surfaces_llm_failures(
+        self, generate_reference_answer_mock
+    ):
         from apps.grading.services import LLMGenerationError
 
         generate_reference_answer_mock.side_effect = LLMGenerationError("Malformed model output.")
@@ -145,9 +155,9 @@ class GradingArtifactApiTests(APITestCase):
 
         def provider_call(*args):
             self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
-            return SimpleNamespace(criteria=[SimpleNamespace(
-                title="Accuracy", description="Accurate", max_points=5
-            )])
+            return SimpleNamespace(
+                criteria=[SimpleNamespace(title="Accuracy", description="Accurate", max_points=5)]
+            )
 
         generate_rubric.side_effect = provider_call
         response = self.client.post(
@@ -185,7 +195,11 @@ class GradingArtifactApiTests(APITestCase):
             type(
                 "Criterion",
                 (),
-                {"title": "Core concept", "description": "Defines osmosis correctly.", "max_points": 3},
+                {
+                    "title": "Core concept",
+                    "description": "Defines osmosis correctly.",
+                    "max_points": 3,
+                },
             )(),
             type(
                 "Criterion",
@@ -226,15 +240,15 @@ class GradingArtifactApiTests(APITestCase):
         )
         self.assertEqual(patch_response.status_code, 200)
 
-        delete_response = self.client.delete(reverse("rubric-criterion-detail", args=[criterion_id]))
+        delete_response = self.client.delete(
+            reverse("rubric-criterion-detail", args=[criterion_id])
+        )
         self.assertEqual(delete_response.status_code, 204)
         self.assertEqual(RubricCriterion.objects.count(), 0)
 
     def test_csv_import_creates_submissions(self):
         csv_bytes = (
-            "student_name,student_id,response_text\n"
-            "Alice,1001,Answer one\n"
-            "Bob,1002,Answer two\n"
+            "student_name,student_id,response_text\nAlice,1001,Answer one\nBob,1002,Answer two\n"
         ).encode("utf-8")
         upload = SimpleUploadedFile("submissions.csv", csv_bytes, content_type="text/csv")
 
@@ -312,7 +326,9 @@ class GradingArtifactApiTests(APITestCase):
             needs_review=False,
         )
 
-        response = self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        response = self.client.post(
+            reverse("submission-grade", args=[submission.id]), {}, format="json"
+        )
 
         self.assertEqual(response.status_code, 200)
         submission.refresh_from_db()
@@ -328,7 +344,9 @@ class GradingArtifactApiTests(APITestCase):
 
         ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
         RubricCriterion.objects.create(
-            question_part=self.question, title="Accuracy", description="Accurate",
+            question_part=self.question,
+            title="Accuracy",
+            description="Accurate",
             max_points="5",
         )
         submission = StudentSubmission.objects.create(
@@ -336,14 +354,17 @@ class GradingArtifactApiTests(APITestCase):
         )
         map_answers.side_effect = LLMGenerationError("provider request id and private details")
 
-        response = self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        response = self.client.post(
+            reverse("submission-grade", args=[submission.id]), {}, format="json"
+        )
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
         submission.refresh_from_db()
         self.assertEqual(submission.last_error, "AI request failed. Please try again.")
-        self.assertNotIn("private details", str(self.client.get(
-            reverse("submission-detail", args=[submission.id])
-        ).data))
+        self.assertNotIn(
+            "private details",
+            str(self.client.get(reverse("submission-detail", args=[submission.id])).data),
+        )
 
     @patch("apps.grading.services.submission_workflow.grade_question_part")
     @patch("apps.grading.services.submission_workflow.map_submission_answers")
@@ -439,7 +460,9 @@ class GradingArtifactApiTests(APITestCase):
 
     @patch("apps.grading.services.submission_workflow.grade_question_part")
     @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_repeat_grading_reuses_recent_result_without_duplicate_ai_spend(self, map_answers, grade_question):
+    def test_repeat_grading_reuses_recent_result_without_duplicate_ai_spend(
+        self, map_answers, grade_question
+    ):
         ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
         RubricCriterion.objects.create(
             question_part=self.question, title="Accuracy", description="Accurate", max_points="5"
@@ -451,14 +474,21 @@ class GradingArtifactApiTests(APITestCase):
 
         def mapping(*args):
             self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
-            return SimpleNamespace(answers=[SimpleNamespace(
-                part_key="Q1", extracted_answer_text="Answer", mapping_confidence=0.9
-            )])
+            return SimpleNamespace(
+                answers=[
+                    SimpleNamespace(
+                        part_key="Q1", extracted_answer_text="Answer", mapping_confidence=0.9
+                    )
+                ]
+            )
 
         def grading(*args):
             self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
             return SimpleNamespace(
-                score=4, feedback="Good", reasoning_summary="Good", confidence_score=0.9,
+                score=4,
+                feedback="Good",
+                reasoning_summary="Good",
+                confidence_score=0.9,
                 needs_review=False,
             )
 
@@ -477,10 +507,14 @@ class GradingArtifactApiTests(APITestCase):
             question_part=self.question, title="Accuracy", description="Accurate", max_points="5"
         )
         submission = StudentSubmission.objects.create(
-            assignment=self.assignment, student_name="Alice", raw_response_text="Answer",
+            assignment=self.assignment,
+            student_name="Alice",
+            raw_response_text="Answer",
             grading_status=StudentSubmission.GradingStatus.GRADING,
         )
-        response = self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        response = self.client.post(
+            reverse("submission-grade", args=[submission.id]), {}, format="json"
+        )
         self.assertEqual(response.status_code, 409)
         map_answers.assert_not_called()
 
@@ -589,7 +623,9 @@ class GradingArtifactApiTests(APITestCase):
             {},
             format="json",
         )
-        export_response = self.client.get(reverse("assignment-export-csv", args=[self.assignment.id]))
+        export_response = self.client.get(
+            reverse("assignment-export-csv", args=[self.assignment.id])
+        )
 
         self.assertEqual(finalize_response.status_code, 200)
         submission.refresh_from_db()
@@ -600,7 +636,10 @@ class GradingArtifactApiTests(APITestCase):
         self.assertEqual(export_response.status_code, 200)
         self.assertEqual(export_response["Content-Type"], "text/csv")
         content = export_response.content.decode("utf-8")
-        self.assertIn("student_name,student_identifier,grading_status,total_score,finalized_at,Q1_score,Q1_feedback", content)
+        self.assertIn(
+            "student_name,student_identifier,grading_status,total_score,finalized_at,Q1_score,Q1_feedback",
+            content,
+        )
         self.assertIn("Elliot,E-1,finalized,4.50", content)
         self.assertIn("Final feedback", content)
 
@@ -705,7 +744,9 @@ class QuestionGenerationServiceTests(TestCase):
         self.assertIn(first_question.text, shared_context)
 
     @patch("apps.grading.services.generation.question_set_needs_repair", return_value=False)
-    def test_generate_question_parts_ignores_formula_lines_when_finding_sections(self, _needs_repair):
+    def test_generate_question_parts_ignores_formula_lines_when_finding_sections(
+        self, _needs_repair
+    ):
         assignment = SimpleNamespace(
             title="Assignment 1 - Q1",
             course_name="CPSC 440",
@@ -729,6 +770,8 @@ class QuestionGenerationServiceTests(TestCase):
         )
 
         result = generate_question_parts(assignment)
-        question_labels = [part.source_label for part in result.parts if part.part_type == "question"]
+        question_labels = [
+            part.source_label for part in result.parts if part.part_type == "question"
+        ]
 
         self.assertEqual(question_labels, ["1.1", "1.2", "1.8", "1.9", "1.10"])

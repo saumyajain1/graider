@@ -100,7 +100,9 @@ class AuthSecurityTests(TestCase):
             "password": "StrongPass123!",
         }
         self.assertEqual(
-            self.client.post(reverse("register"), registration, content_type="application/json").status_code,
+            self.client.post(
+                reverse("register"), registration, content_type="application/json"
+            ).status_code,
             403,
         )
         self.assertFalse(User.objects.exists())
@@ -108,7 +110,9 @@ class AuthSecurityTests(TestCase):
         token = self.csrf_token()
         self.assertEqual(
             self.client.post(
-                reverse("register"), registration, content_type="application/json",
+                reverse("register"),
+                registration,
+                content_type="application/json",
                 HTTP_X_CSRFTOKEN=token,
             ).status_code,
             201,
@@ -117,13 +121,17 @@ class AuthSecurityTests(TestCase):
         login_client = Client(enforce_csrf_checks=True)
         credentials = {"email": registration["email"], "password": registration["password"]}
         self.assertEqual(
-            login_client.post(reverse("login"), credentials, content_type="application/json").status_code,
+            login_client.post(
+                reverse("login"), credentials, content_type="application/json"
+            ).status_code,
             403,
         )
         token = login_client.get(reverse("me")).cookies["csrftoken"].value
         self.assertEqual(
             login_client.post(
-                reverse("login"), credentials, content_type="application/json",
+                reverse("login"),
+                credentials,
+                content_type="application/json",
                 HTTP_X_CSRFTOKEN=token,
             ).status_code,
             200,
@@ -155,24 +163,39 @@ class AuthSecurityTests(TestCase):
             client = Client(REMOTE_ADDR="192.0.2.1")
             for _ in range(2):
                 self.assertEqual(
-                    client.post(reverse("login"), {"email": "nobody@example.com", "password": "wrong"},
-                                content_type="application/json").status_code,
+                    client.post(
+                        reverse("login"),
+                        {"email": "nobody@example.com", "password": "wrong"},
+                        content_type="application/json",
+                    ).status_code,
                     400,
                 )
             self.assertEqual(
-                client.post(reverse("login"), {"email": "nobody@example.com", "password": "wrong"},
-                            content_type="application/json").status_code,
+                client.post(
+                    reverse("login"),
+                    {"email": "nobody@example.com", "password": "wrong"},
+                    content_type="application/json",
+                ).status_code,
                 429,
             )
             self.assertEqual(
-                Client(REMOTE_ADDR="192.0.2.2").post(
-                    reverse("login"), {"email": "nobody@example.com", "password": "wrong"},
+                Client(REMOTE_ADDR="192.0.2.2")
+                .post(
+                    reverse("login"),
+                    {"email": "nobody@example.com", "password": "wrong"},
                     content_type="application/json",
-                ).status_code,
+                )
+                .status_code,
                 400,
             )
-            self.assertEqual(client.post(reverse("register"), {}, content_type="application/json").status_code, 400)
-            self.assertEqual(client.post(reverse("register"), {}, content_type="application/json").status_code, 429)
+            self.assertEqual(
+                client.post(reverse("register"), {}, content_type="application/json").status_code,
+                400,
+            )
+            self.assertEqual(
+                client.post(reverse("register"), {}, content_type="application/json").status_code,
+                429,
+            )
             self.assertEqual(client.get(reverse("me")).status_code, 401)
             self.assertEqual(client.get(reverse("me")).status_code, 401)
             self.assertEqual(client.get(reverse("me")).status_code, 429)
@@ -183,13 +206,21 @@ class AuthSecurityTests(TestCase):
         with patch.object(IPScopedRateThrottle, "THROTTLE_RATES", rates):
             client = Client(REMOTE_ADDR="10.0.0.1", HTTP_X_FORWARDED_FOR="192.0.2.10, 10.0.0.1")
             payload = {"email": "nobody@example.com", "password": "wrong"}
-            self.assertEqual(client.post(reverse("login"), payload, content_type="application/json").status_code, 400)
-            self.assertEqual(client.post(reverse("login"), payload, content_type="application/json").status_code, 429)
+            self.assertEqual(
+                client.post(reverse("login"), payload, content_type="application/json").status_code,
+                400,
+            )
+            self.assertEqual(
+                client.post(reverse("login"), payload, content_type="application/json").status_code,
+                429,
+            )
 
             other_client = Client(
                 REMOTE_ADDR="10.0.0.1", HTTP_X_FORWARDED_FOR="192.0.2.11, 10.0.0.1"
             )
             self.assertEqual(
-                other_client.post(reverse("login"), payload, content_type="application/json").status_code,
+                other_client.post(
+                    reverse("login"), payload, content_type="application/json"
+                ).status_code,
                 400,
             )

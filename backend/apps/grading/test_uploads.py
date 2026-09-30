@@ -12,7 +12,6 @@ from apps.accounts.models import User
 from apps.assignments.models import Assignment
 from apps.grading.models import StudentSubmission, SubmissionImport
 
-
 PRIVATE_TEST_STORAGE = {
     "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
@@ -48,7 +47,10 @@ class PrivateUploadTests(APITestCase):
     def test_assignment_file_keeps_original_name_and_requires_owner(self):
         response = self.client.post(
             reverse("assignment-list"),
-            {"title": "Biology", "source_file": SimpleUploadedFile("my questions.txt", b"Explain osmosis.")},
+            {
+                "title": "Biology",
+                "source_file": SimpleUploadedFile("my questions.txt", b"Explain osmosis."),
+            },
             format="multipart",
         )
         self.assertEqual(response.status_code, 201)
@@ -99,7 +101,10 @@ class PrivateUploadTests(APITestCase):
         assignment = self.make_assignment()
         submission_response = self.client.post(
             reverse("submission-list", args=[assignment.id]),
-            {"student_name": "Alex", "response_file": SimpleUploadedFile("alex.txt", b"Water moves.")},
+            {
+                "student_name": "Alex",
+                "response_file": SimpleUploadedFile("alex.txt", b"Water moves."),
+            },
             format="multipart",
         )
         self.assertEqual(submission_response.status_code, 201)
@@ -111,7 +116,11 @@ class PrivateUploadTests(APITestCase):
 
         csv_response = self.client.post(
             reverse("submission-import-csv", args=[assignment.id]),
-            {"file": SimpleUploadedFile("class list.csv", b"student_name,response_text\nBob,Answer two\n")},
+            {
+                "file": SimpleUploadedFile(
+                    "class list.csv", b"student_name,response_text\nBob,Answer two\n"
+                )
+            },
             format="multipart",
         )
         self.assertEqual(csv_response.status_code, 201)
@@ -126,7 +135,10 @@ class PrivateUploadTests(APITestCase):
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(response_url).status_code, 404)
         self.assertEqual(self.client.get(csv_url).status_code, 404)
-        self.assertEqual(self.client.get(reverse("submission-import-list", args=[assignment.id])).status_code, 404)
+        self.assertEqual(
+            self.client.get(reverse("submission-import-list", args=[assignment.id])).status_code,
+            404,
+        )
 
     @override_settings(GRAIDER_MAX_UPLOAD_BYTES=10)
     def test_oversized_assignment_file_returns_413_without_storage(self):
@@ -142,7 +154,10 @@ class PrivateUploadTests(APITestCase):
     def test_pdf_page_limit_returns_413(self):
         response = self.client.post(
             reverse("assignment-list"),
-            {"title": "Too many pages", "source_file": SimpleUploadedFile("pages.pdf", pdf_with_pages(2))},
+            {
+                "title": "Too many pages",
+                "source_file": SimpleUploadedFile("pages.pdf", pdf_with_pages(2)),
+            },
             format="multipart",
         )
         self.assertEqual(response.status_code, 413)
@@ -161,7 +176,10 @@ class PrivateUploadTests(APITestCase):
     def test_extracted_pdf_text_limit_returns_413(self):
         response = self.client.post(
             reverse("assignment-list"),
-            {"title": "Too much PDF text", "source_file": SimpleUploadedFile("long.pdf", pdf_with_pages(1))},
+            {
+                "title": "Too much PDF text",
+                "source_file": SimpleUploadedFile("long.pdf", pdf_with_pages(1)),
+            },
             format="multipart",
         )
         self.assertEqual(response.status_code, 413)
@@ -183,7 +201,11 @@ class PrivateUploadTests(APITestCase):
         assignment = self.make_assignment()
         response = self.client.post(
             reverse("submission-import-csv", args=[assignment.id]),
-            {"file": SimpleUploadedFile("roster.csv", b"student_name,response_text\nAlex,Answer\n")},
+            {
+                "file": SimpleUploadedFile(
+                    "roster.csv", b"student_name,response_text\nAlex,Answer\n"
+                )
+            },
             format="multipart",
         )
         self.assertEqual(response.status_code, 413)
@@ -194,7 +216,11 @@ class PrivateUploadTests(APITestCase):
         assignment = self.make_assignment()
         response = self.client.post(
             reverse("submission-import-csv", args=[assignment.id]),
-            {"file": SimpleUploadedFile("roster.csv", b"student_name,response_text\nA,One\nB,Two\n")},
+            {
+                "file": SimpleUploadedFile(
+                    "roster.csv", b"student_name,response_text\nA,One\nB,Two\n"
+                )
+            },
             format="multipart",
         )
         self.assertEqual(response.status_code, 413)
@@ -205,7 +231,9 @@ class PrivateUploadTests(APITestCase):
         assignment = self.make_assignment()
         StudentSubmission.objects.create(assignment=assignment, student_name="Existing")
         prefix = f"submissions/{self.teacher.id}/{assignment.id}"
-        before = set(default_storage.listdir(prefix)[1]) if default_storage.exists(prefix) else set()
+        before = (
+            set(default_storage.listdir(prefix)[1]) if default_storage.exists(prefix) else set()
+        )
         response = self.client.post(
             reverse("submission-list", args=[assignment.id]),
             {"student_name": "New", "response_file": SimpleUploadedFile("new.txt", b"Answer")},
@@ -218,12 +246,20 @@ class PrivateUploadTests(APITestCase):
     def test_csv_database_failure_cleans_uploaded_object(self):
         assignment = self.make_assignment()
         prefix = f"imports/{self.teacher.id}/{assignment.id}"
-        before = set(default_storage.listdir(prefix)[1]) if default_storage.exists(prefix) else set()
-        with patch.object(StudentSubmission.objects, "bulk_create", side_effect=RuntimeError("DB failure")):
+        before = (
+            set(default_storage.listdir(prefix)[1]) if default_storage.exists(prefix) else set()
+        )
+        with patch.object(
+            StudentSubmission.objects, "bulk_create", side_effect=RuntimeError("DB failure")
+        ):
             with self.assertRaises(RuntimeError):
                 self.client.post(
                     reverse("submission-import-csv", args=[assignment.id]),
-                    {"file": SimpleUploadedFile("roster.csv", b"student_name,response_text\nA,One\n")},
+                    {
+                        "file": SimpleUploadedFile(
+                            "roster.csv", b"student_name,response_text\nA,One\n"
+                        )
+                    },
                     format="multipart",
                 )
         self.assertEqual(SubmissionImport.objects.count(), 0)
@@ -241,7 +277,10 @@ class PrivateUploadTests(APITestCase):
             with self.assertRaises(RuntimeError):
                 self.client.post(
                     reverse("assignment-list"),
-                    {"title": "Biology", "source_file": SimpleUploadedFile("test.txt", b"Question")},
+                    {
+                        "title": "Biology",
+                        "source_file": SimpleUploadedFile("test.txt", b"Question"),
+                    },
                     format="multipart",
                 )
         self.assertEqual(Assignment.objects.count(), 0)
@@ -258,17 +297,26 @@ class PrivateUploadTests(APITestCase):
             "default": {
                 "BACKEND": "storages.backends.s3.S3Storage",
                 "OPTIONS": {
-                    "access_key": "test", "secret_key": "test", "bucket_name": "uploads",
-                    "endpoint_url": "https://example.invalid", "region_name": "us-east-2",
-                    "addressing_style": "path", "signature_version": "s3v4",
-                    "querystring_auth": True, "querystring_expire": 60,
+                    "access_key": "test",
+                    "secret_key": "test",
+                    "bucket_name": "uploads",
+                    "endpoint_url": "https://example.invalid",
+                    "region_name": "us-east-2",
+                    "addressing_style": "path",
+                    "signature_version": "s3v4",
+                    "querystring_auth": True,
+                    "querystring_expire": 60,
                 },
             },
         }
         with override_settings(STORAGES=storage_settings):
-            with patch("storages.backends.s3.S3Storage.url", return_value="https://signed.example/file") as url_mock:
+            with patch(
+                "storages.backends.s3.S3Storage.url", return_value="https://signed.example/file"
+            ) as url_mock:
                 response = self.client.get(reverse("assignment-source-file", args=[assignment.id]))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "https://signed.example/file")
         self.assertEqual(url_mock.call_args.args[0], "assignments/example.txt")
-        self.assertIn("attachment", url_mock.call_args.kwargs["parameters"]["ResponseContentDisposition"])
+        self.assertIn(
+            "attachment", url_mock.call_args.kwargs["parameters"]["ResponseContentDisposition"]
+        )

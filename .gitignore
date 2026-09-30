@@ -5,6 +5,9 @@ backend/media/
 backend/staticfiles/
 frontend/dist/
 frontend/node_modules/
+node_modules/
+.ruff_cache/
+.vite/
 __pycache__/
 *.pyc
 .env

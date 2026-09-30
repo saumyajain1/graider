@@ -38,14 +38,27 @@ def reserve_usage(*, user, operation, model, estimated_tokens):
         LLMQuotaLock.objects.select_for_update().get(pk=1)
         recent = LLMUsage.objects.filter(user=user, created_at__gte=now - timedelta(minutes=1))
         if recent.count() >= settings.GRAIDER_USER_AI_REQUESTS_PER_MINUTE:
-            raise LLMQuotaExceeded("You are making AI requests too quickly. Please try again shortly.")
+            raise LLMQuotaExceeded(
+                "You are making AI requests too quickly. Please try again shortly."
+            )
 
         own = LLMUsage.objects.filter(user=user)
-        if _charged_tokens(own.filter(created_at__gte=day_start)) + estimated_tokens > settings.GRAIDER_USER_DAILY_TOKENS:
+        if (
+            _charged_tokens(own.filter(created_at__gte=day_start)) + estimated_tokens
+            > settings.GRAIDER_USER_DAILY_TOKENS
+        ):
             raise LLMQuotaExceeded("Your daily AI allowance is used up. Please try again tomorrow.")
-        if _charged_tokens(own.filter(created_at__gte=month_start)) + estimated_tokens > settings.GRAIDER_USER_MONTHLY_TOKENS:
-            raise LLMQuotaExceeded("Your monthly AI allowance is used up. Please try again next month.")
-        if _charged_tokens(LLMUsage.objects.filter(created_at__gte=month_start)) + estimated_tokens > settings.GRAIDER_GLOBAL_MONTHLY_TOKENS:
+        if (
+            _charged_tokens(own.filter(created_at__gte=month_start)) + estimated_tokens
+            > settings.GRAIDER_USER_MONTHLY_TOKENS
+        ):
+            raise LLMQuotaExceeded(
+                "Your monthly AI allowance is used up. Please try again next month."
+            )
+        if (
+            _charged_tokens(LLMUsage.objects.filter(created_at__gte=month_start)) + estimated_tokens
+            > settings.GRAIDER_GLOBAL_MONTHLY_TOKENS
+        ):
             raise LLMQuotaExceeded("Graider's AI allowance is used up. Please try again later.")
 
         return LLMUsage.objects.create(
@@ -67,8 +80,15 @@ def finish_usage(usage, *, status, input_tokens=0, output_tokens=0, total_tokens
         row.reserved_tokens = row.reserved_tokens if status in RESERVED_STATUSES else 0
         row.provider_request_id = request_id or ""
         row.completed_at = timezone.now()
-        row.save(update_fields=(
-            "status", "input_tokens", "output_tokens", "total_tokens", "reserved_tokens",
-            "provider_request_id", "completed_at",
-        ))
+        row.save(
+            update_fields=(
+                "status",
+                "input_tokens",
+                "output_tokens",
+                "total_tokens",
+                "reserved_tokens",
+                "provider_request_id",
+                "completed_at",
+            )
+        )
         return row

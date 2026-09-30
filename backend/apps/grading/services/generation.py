@@ -280,17 +280,25 @@ def parse_structured_pdf_questions(assignment: Assignment):
     for parent_label, group_matches in grouped_matches.items():
         section_meta = section_index.get(parent_label)
         section_start = section_meta["match"].end() if section_meta else group_matches[0][1].start()
-        section_end = section_meta["end"] if section_meta else (
-            group_matches[-1][1].end() if len(group_matches) == 1 else group_matches[-1][1].start()
+        section_end = (
+            section_meta["end"]
+            if section_meta
+            else (
+                group_matches[-1][1].end()
+                if len(group_matches) == 1
+                else group_matches[-1][1].start()
+            )
         )
         section_text = focused_text[section_start:section_end]
         shared_marks_match = EACH_PART_MARKS_RE.search(section_text)
-        shared_marks = parse_marks(shared_marks_match.group("points")) if shared_marks_match else None
+        shared_marks = (
+            parse_marks(shared_marks_match.group("points")) if shared_marks_match else None
+        )
 
         context_chunks = []
         if section_meta:
             preamble = clean_context_block(
-                focused_text[section_meta["match"].end():group_matches[0][1].start()]
+                focused_text[section_meta["match"].end() : group_matches[0][1].start()]
             )
             if preamble:
                 context_chunks.append(preamble)
@@ -404,7 +412,9 @@ def format_question_label(question_part: QuestionPart):
 
 def build_shared_context(question_part: QuestionPart):
     assignment = question_part.assignment
-    group_key = question_part.parent_key or parent_label_from_source_label(question_part.source_label)
+    group_key = question_part.parent_key or parent_label_from_source_label(
+        question_part.source_label
+    )
     blocks = []
     seen = set()
 
@@ -418,10 +428,14 @@ def build_shared_context(question_part: QuestionPart):
         blocks.append(f"{title}:\n{normalized}")
 
     if group_key:
-        explicit_contexts = assignment.question_parts.filter(
-            part_type=QuestionPart.PartType.CONTEXT,
-            parent_key=group_key,
-        ).exclude(id=question_part.id).order_by("display_order", "id")
+        explicit_contexts = (
+            assignment.question_parts.filter(
+                part_type=QuestionPart.PartType.CONTEXT,
+                parent_key=group_key,
+            )
+            .exclude(id=question_part.id)
+            .order_by("display_order", "id")
+        )
         for context_part in explicit_contexts:
             append_block(f"Shared context {context_part.display_label}", context_part.text)
 

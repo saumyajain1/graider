@@ -105,7 +105,9 @@ export function AssignmentSubmissionsPage() {
     mutationFn: (file: File) => importSubmissionsCsv(assignmentId!, file),
     onSuccess: async (submissions) => {
       setErrorMessage(null)
-      setStatusMessage(`${submissions.length} submission${submissions.length === 1 ? '' : 's'} imported.`)
+      setStatusMessage(
+        `${submissions.length} submission${submissions.length === 1 ? '' : 's'} imported.`,
+      )
       setCsvFile(null)
       await refreshAssignmentData()
     },
@@ -176,9 +178,8 @@ export function AssignmentSubmissionsPage() {
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Add a single student response manually, upload a PDF/TXT submission, or
-            import a simple CSV. Once responses are in, trigger grading per student or
-            across the full roster.
+            Add a single student response manually, upload a PDF/TXT submission, or import a simple
+            CSV. Once responses are in, trigger grading per student or across the full roster.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold">
@@ -202,8 +203,8 @@ export function AssignmentSubmissionsPage() {
             Grade the entire roster once the rubric is stable.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Failed rows remain visible with their latest error so you can retry after
-            fixing the source material or AI configuration.
+            Failed rows remain visible with their latest error so you can retry after fixing the
+            source material or AI configuration.
           </p>
           <button
             type="button"
@@ -241,9 +242,7 @@ export function AssignmentSubmissionsPage() {
           </h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Student name
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Student name</span>
               <input
                 required
                 value={manualForm.student_name}
@@ -273,9 +272,7 @@ export function AssignmentSubmissionsPage() {
           </div>
 
           <label className="mt-4 block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Submission file
-            </span>
+            <span className="mb-2 block text-sm font-medium text-slate-700">Submission file</span>
             <input
               type="file"
               accept=".pdf,.txt,application/pdf,text/plain"
@@ -296,9 +293,7 @@ export function AssignmentSubmissionsPage() {
           ) : null}
 
           <label className="mt-4 block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Raw response text
-            </span>
+            <span className="mb-2 block text-sm font-medium text-slate-700">Raw response text</span>
             <textarea
               rows={9}
               value={manualForm.raw_response_text}
@@ -331,12 +326,10 @@ export function AssignmentSubmissionsPage() {
             await importMutation.mutateAsync(csvFile)
           }}
         >
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            Import CSV
-          </h2>
+          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">Import CSV</h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Use columns `student_name` and either `response_text` or
-            `raw_response_text`. `student_identifier` or `student_id` is optional.
+            Use columns `student_name` and either `response_text` or `raw_response_text`.
+            `student_identifier` or `student_id` is optional.
           </p>
 
           <label className="mt-5 block">
@@ -447,7 +440,10 @@ export function AssignmentSubmissionsPage() {
                   {submission.response_filename ? (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
                       Source file:{' '}
-                      <a href={submission.response_file_url ?? undefined} className="text-fuchsia-700 underline">
+                      <a
+                        href={submission.response_file_url ?? undefined}
+                        className="text-fuchsia-700 underline"
+                      >
                         {submission.response_filename}
                       </a>
                     </div>

@@ -155,8 +155,8 @@ export function AssignmentReferenceAnswersPage() {
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Generate model answers with AI or draft them manually. These answers feed the
-            rubric builder and later guide grading.
+            Generate model answers with AI or draft them manually. These answers feed the rubric
+            builder and later guide grading.
           </p>
         </div>
 
@@ -168,8 +168,8 @@ export function AssignmentReferenceAnswersPage() {
             Reference answers should be clear, compact, and editable.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            If AI generation is unavailable, you can still write every answer manually and
-            continue the workflow.
+            If AI generation is unavailable, you can still write every answer manually and continue
+            the workflow.
           </p>
           <button
             type="button"

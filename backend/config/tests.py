@@ -93,9 +93,7 @@ class ProductionSettingsTests(SimpleTestCase):
     def test_sqlite_fallback_requires_explicit_debug(self):
         result = self.load_settings(DJANGO_DEBUG="true", DATABASE_URL="")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["engine"], "django.db.backends.sqlite3"
-        )
+        self.assertEqual(json.loads(result.stdout)["engine"], "django.db.backends.sqlite3")
 
     def test_invalid_debug_value_fails(self):
         result = self.load_settings(DJANGO_DEBUG="perhaps")
@@ -172,11 +170,13 @@ class SameOriginAuthTests(TestCase):
 
                 registered = client.post(
                     "/api/auth/register",
-                    json.dumps({
-                        "email": "same-origin@example.com",
-                        "full_name": "Same Origin",
-                        "password": "StrongPass123!",
-                    }),
+                    json.dumps(
+                        {
+                            "email": "same-origin@example.com",
+                            "full_name": "Same Origin",
+                            "password": "StrongPass123!",
+                        }
+                    ),
                     content_type="application/json",
                     HTTP_X_CSRFTOKEN=csrf_token,
                     HTTP_ORIGIN="https://localhost",

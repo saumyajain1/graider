@@ -99,13 +99,12 @@ export function AssignmentOverviewPage() {
 
           <h1 className="mt-4 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Keep the raw assignment text clean here before you decompose it into
-            question parts. If file extraction was messy, correct it directly in the
-            editor below.
+            Keep the raw assignment text clean here before you decompose it into question parts. If
+            file extraction was messy, correct it directly in the editor below.
           </p>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            If you replace the uploaded file, save here and then regenerate questions to
-            overwrite the existing structure from the current file/text.
+            If you replace the uploaded file, save here and then regenerate questions to overwrite
+            the existing structure from the current file/text.
           </p>
 
           {assignment.ingestion_notes ? (
@@ -117,7 +116,10 @@ export function AssignmentOverviewPage() {
           {assignment.source_filename ? (
             <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Uploaded file:{' '}
-              <a href={assignment.source_file_url ?? undefined} className="font-medium text-fuchsia-700 underline">
+              <a
+                href={assignment.source_file_url ?? undefined}
+                className="font-medium text-fuchsia-700 underline"
+              >
                 {assignment.source_filename}
               </a>
             </div>
@@ -132,8 +134,8 @@ export function AssignmentOverviewPage() {
             Build the question map manually first.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Phase 2 keeps the workflow explicit: create question parts by hand, reorder
-            them, and set marks before adding AI-generated artifacts in the next phase.
+            Phase 2 keeps the workflow explicit: create question parts by hand, reorder them, and
+            set marks before adding AI-generated artifacts in the next phase.
           </p>
           <Link
             to={`/assignments/${assignment.id}/questions`}
@@ -164,9 +166,7 @@ export function AssignmentOverviewPage() {
             />
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Course name
-            </span>
+            <span className="mb-2 block text-sm font-medium text-slate-700">Course name</span>
             <input
               value={form.course_name}
               onChange={(event) =>
@@ -207,9 +207,7 @@ export function AssignmentOverviewPage() {
             />
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Assignment text
-            </span>
+            <span className="mb-2 block text-sm font-medium text-slate-700">Assignment text</span>
             <textarea
               rows={14}
               value={form.raw_assignment_text}

@@ -1,9 +1,10 @@
 # Consolidated initial schema for the pre-launch Graider database.
 
-import apps.assignments.models
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
+
+import apps.assignments.models
 
 
 class Migration(migrations.Migration):
@@ -81,9 +82,7 @@ class Migration(migrations.Migration):
                 ("text", models.TextField()),
                 (
                     "max_marks",
-                    models.DecimalField(
-                        blank=True, decimal_places=2, max_digits=6, null=True
-                    ),
+                    models.DecimalField(blank=True, decimal_places=2, max_digits=6, null=True),
                 ),
                 ("display_order", models.PositiveIntegerField(default=0)),
                 ("created_by_ai", models.BooleanField(default=False)),

@@ -254,7 +254,10 @@ export function AssignmentRubricPage() {
 
   const generateMutation = useMutation({
     mutationFn: (questionPartId?: number) =>
-      generateRubric(assignmentId!, questionPartId ? { question_part_id: questionPartId } : undefined),
+      generateRubric(
+        assignmentId!,
+        questionPartId ? { question_part_id: questionPartId } : undefined,
+      ),
     onSuccess: async () => {
       setErrorMessage(null)
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'rubric'] })
@@ -284,8 +287,8 @@ export function AssignmentRubricPage() {
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Generate rubric criteria from each question and its reference answer, or add
-            the criteria manually. These point allocations will later drive grading.
+            Generate rubric criteria from each question and its reference answer, or add the
+            criteria manually. These point allocations will later drive grading.
           </p>
         </div>
 
@@ -297,8 +300,8 @@ export function AssignmentRubricPage() {
             Rubrics are generated per question part and stay fully editable.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            AI generation depends on reference answers. If the key is missing or generation
-            fails, you can still add criteria manually.
+            AI generation depends on reference answers. If the key is missing or generation fails,
+            you can still add criteria manually.
           </p>
           <button
             type="button"

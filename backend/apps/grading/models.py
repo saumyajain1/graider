@@ -6,11 +6,15 @@ from apps.uploads import object_key
 
 
 def submission_source_upload_to(instance, filename):
-    return object_key(f"submissions/{instance.assignment.teacher_id}/{instance.assignment_id}", filename)
+    return object_key(
+        f"submissions/{instance.assignment.teacher_id}/{instance.assignment_id}", filename
+    )
 
 
 def csv_source_upload_to(instance, filename):
-    return object_key(f"imports/{instance.assignment.teacher_id}/{instance.assignment_id}", filename)
+    return object_key(
+        f"imports/{instance.assignment.teacher_id}/{instance.assignment_id}", filename
+    )
 
 
 class ReferenceAnswer(models.Model):
@@ -213,7 +217,9 @@ class LLMUsage(models.Model):
         UNCERTAIN = "uncertain", "Uncertain"
         UNMETERED = "unmetered", "Succeeded without usage data"
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="llm_usages")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="llm_usages"
+    )
     operation = models.CharField(max_length=32)
     model = models.CharField(max_length=100)
     input_tokens = models.PositiveIntegerField(default=0)

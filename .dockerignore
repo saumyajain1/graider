@@ -1,0 +1,15 @@
+.git
+.DS_Store
+.venv
+**/.env
+**/.env.*
+**/node_modules
+**/__pycache__
+**/.ruff_cache
+**/.vite
+**/*.pyc
+**/*.sqlite3
+backend/media
+backend/staticfiles
+frontend/dist
+NEXT_TASKS.md

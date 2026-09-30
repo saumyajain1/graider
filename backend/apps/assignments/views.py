@@ -7,9 +7,6 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Assignment, QuestionPart
-from .serializers import AssignmentSerializer, QuestionPartSerializer, build_part_key
-from apps.uploads import delete_upload_after_commit, private_file_response
 from apps.grading.services import (
     LLMConfigurationError,
     LLMGenerationError,
@@ -17,6 +14,10 @@ from apps.grading.services import (
 )
 from apps.grading.services.openai_client import LLMSpendLimitError, public_llm_error
 from apps.grading.services.usage import LLMQuotaExceeded
+from apps.uploads import delete_upload_after_commit, private_file_response
+
+from .models import Assignment, QuestionPart
+from .serializers import AssignmentSerializer, QuestionPartSerializer, build_part_key
 
 
 def normalize_question_order(assignment):
@@ -97,7 +98,9 @@ class AssignmentDetailView(TeacherScopedView):
 class AssignmentSourceFileView(TeacherScopedView):
     def get(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        filename = assignment.source_original_filename or assignment.source_file.name.rsplit("/", 1)[-1]
+        filename = (
+            assignment.source_original_filename or assignment.source_file.name.rsplit("/", 1)[-1]
+        )
         return private_file_response(assignment.source_file, filename)
 
 
@@ -129,7 +132,9 @@ class QuestionGenerateView(TeacherScopedView):
 
         if not assignment.raw_assignment_text.strip():
             return Response(
-                {"detail": "Assignment text is empty. Add or upload text before generating questions."},
+                {
+                    "detail": "Assignment text is empty. Add or upload text before generating questions."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -169,7 +174,9 @@ class QuestionGenerateView(TeacherScopedView):
                         parent_key=getattr(part, "parent_key", None) or "",
                         part_type=part.part_type,
                         text=part.text,
-                        max_marks=Decimal(str(part.max_marks)) if part.max_marks is not None else None,
+                        max_marks=Decimal(str(part.max_marks))
+                        if part.max_marks is not None
+                        else None,
                         display_order=starting_order + index,
                         created_by_ai=True,
                     )
@@ -213,13 +220,13 @@ class QuestionReorderView(TeacherScopedView):
         existing_ids = list(assignment.question_parts.values_list("id", flat=True))
         if sorted(question_ids) != sorted(existing_ids):
             return Response(
-                {"detail": "question_ids must contain each question for the assignment exactly once."},
+                {
+                    "detail": "question_ids must contain each question for the assignment exactly once."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        questions_by_id = {
-            question.id: question for question in assignment.question_parts.all()
-        }
+        questions_by_id = {question.id: question for question in assignment.question_parts.all()}
 
         with transaction.atomic():
             for index, question_id in enumerate(question_ids):

@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 ROOT_DIR = BASE_DIR.parent
 load_dotenv(ROOT_DIR / ".env")
 
+
 def _boolean_env(name, default=False):
     value = os.getenv(name)
     if value is None:
@@ -47,19 +48,13 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set.")
 if not DEBUG and (
-    len(SECRET_KEY) < 50
-    or len(set(SECRET_KEY)) < 5
-    or SECRET_KEY.startswith("django-insecure-")
+    len(SECRET_KEY) < 50 or len(set(SECRET_KEY)) < 5 or SECRET_KEY.startswith("django-insecure-")
 ):
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be a strong, unique value.")
 
-ALLOWED_HOSTS = _csv_env(
-    "DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost" if DEBUG else ""
-)
+ALLOWED_HOSTS = _csv_env("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost" if DEBUG else "")
 if not DEBUG and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
-    raise ImproperlyConfigured(
-        "DJANGO_ALLOWED_HOSTS must list explicit hostnames in production."
-    )
+    raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must list explicit hostnames in production.")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173" if DEBUG else "")
 
@@ -111,9 +106,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 if DATABASE_URL:
     DATABASES = {
-        "default": dj_database_url.parse(
-            DATABASE_URL, conn_max_age=60, conn_health_checks=True
-        )
+        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=60, conn_health_checks=True)
     }
 elif DEBUG:
     DATABASES = {
@@ -167,9 +160,7 @@ GRAIDER_MAX_SUBMISSIONS_PER_ASSIGNMENT = _positive_int_env(
 GRAIDER_USER_DAILY_TOKENS = _positive_int_env("GRAIDER_USER_DAILY_TOKENS", 250_000)
 GRAIDER_USER_MONTHLY_TOKENS = _positive_int_env("GRAIDER_USER_MONTHLY_TOKENS", 500_000)
 GRAIDER_GLOBAL_MONTHLY_TOKENS = _positive_int_env("GRAIDER_GLOBAL_MONTHLY_TOKENS", 2_000_000)
-GRAIDER_USER_AI_REQUESTS_PER_MINUTE = _positive_int_env(
-    "GRAIDER_USER_AI_REQUESTS_PER_MINUTE", 40
-)
+GRAIDER_USER_AI_REQUESTS_PER_MINUTE = _positive_int_env("GRAIDER_USER_AI_REQUESTS_PER_MINUTE", 40)
 GRAIDER_MAX_OUTPUT_TOKENS = _positive_int_env("GRAIDER_MAX_OUTPUT_TOKENS", 8_192)
 GRAIDER_MAX_GRADE_ALL_SUBMISSIONS = _positive_int_env("GRAIDER_MAX_GRADE_ALL_SUBMISSIONS", 5)
 GRAIDER_MAX_GRADE_ALL_QUESTIONS = _positive_int_env("GRAIDER_MAX_GRADE_ALL_QUESTIONS", 5)
@@ -183,9 +174,7 @@ _storage_endpoint = os.getenv("AWS_ENDPOINT_URL_S3", "")
 _storage_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
 _storage_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 _storage_configured = any((_storage_endpoint, _storage_access_key, _storage_secret_key))
-if _storage_configured and not all(
-    (_storage_endpoint, _storage_access_key, _storage_secret_key)
-):
+if _storage_configured and not all((_storage_endpoint, _storage_access_key, _storage_secret_key)):
     raise ImproperlyConfigured(
         "AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY must be set together."
     )

@@ -11,7 +11,12 @@ from pydantic import BaseModel
 from apps.accounts.models import User
 
 from .models import LLMUsage
-from .services.openai_client import LLMConfigurationError, LLMGenerationError, LLMSpendLimitError, OpenAIChatService
+from .services.openai_client import (
+    LLMConfigurationError,
+    LLMGenerationError,
+    LLMSpendLimitError,
+    OpenAIChatService,
+)
 from .services.usage import LLMQuotaExceeded, finish_usage, reserve_usage
 
 
@@ -21,7 +26,9 @@ class Reply(BaseModel):
 
 def completion(*, prompt_tokens=120, completion_tokens=40, total_tokens=160, request_id="req_test"):
     return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(parsed=Reply(answer="done"), refusal=None))],
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(parsed=Reply(answer="done"), refusal=None))
+        ],
         usage=SimpleNamespace(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
@@ -37,7 +44,9 @@ class LLMUsageTests(TestCase):
             email="teacher@example.com", full_name="Teacher", password="StrongPass123!"
         )
         self.provider_parse = Mock(return_value=completion())
-        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(parse=self.provider_parse)))
+        client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(parse=self.provider_parse))
+        )
         self.service = OpenAIChatService(client=client)
 
     def make_request(self):
@@ -74,12 +83,16 @@ class LLMUsageTests(TestCase):
         self.assertEqual(row.provider_request_id, "req_test")
 
     def test_same_model_uses_independent_reasoning_settings_for_each_task(self):
-        with patch.dict(os.environ, {
-            "OPENAI_MAPPING_REASONING_EFFORT": "low",
-            "OPENAI_GRADING_REASONING_EFFORT": "high",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_MAPPING_REASONING_EFFORT": "low",
+                "OPENAI_GRADING_REASONING_EFFORT": "high",
+            },
+        ):
             for operation, expected_effort in (
-                ("answer_mapping", "low"), ("submission_grading", "high"),
+                ("answer_mapping", "low"),
+                ("submission_grading", "high"),
             ):
                 self.service.parse(
                     user=self.user,
@@ -108,10 +121,13 @@ class LLMUsageTests(TestCase):
 
     def test_invalid_reasoning_does_not_reserve_usage_or_call_openai(self):
         for value in ("minimal", "", "turbo"):
-            with self.subTest(value=value), patch.dict(
-                os.environ, {"OPENAI_REFERENCE_REASONING_EFFORT": value}
+            with (
+                self.subTest(value=value),
+                patch.dict(os.environ, {"OPENAI_REFERENCE_REASONING_EFFORT": value}),
             ):
-                with self.assertRaisesMessage(LLMConfigurationError, "OPENAI_REFERENCE_REASONING_EFFORT"):
+                with self.assertRaisesMessage(
+                    LLMConfigurationError, "OPENAI_REFERENCE_REASONING_EFFORT"
+                ):
                     self.make_request()
         self.provider_parse.assert_not_called()
         self.assertFalse(LLMUsage.objects.exists())
@@ -122,13 +138,28 @@ class LLMUsageTests(TestCase):
         GRAIDER_GLOBAL_MONTHLY_TOKENS=300,
     )
     def test_pending_reservation_blocks_another_request_then_releases_unused_tokens(self):
-        first = reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=80)
+        first = reserve_usage(
+            user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=80
+        )
         with self.assertRaises(LLMQuotaExceeded):
-            reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=30)
+            reserve_usage(
+                user=self.user,
+                operation="answer_mapping",
+                model="gpt-5.4-mini",
+                estimated_tokens=30,
+            )
         self.assertEqual(LLMUsage.objects.count(), 1)
 
-        finish_usage(first, status=LLMUsage.Status.SUCCEEDED, input_tokens=15, output_tokens=5, total_tokens=20)
-        second = reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=70)
+        finish_usage(
+            first,
+            status=LLMUsage.Status.SUCCEEDED,
+            input_tokens=15,
+            output_tokens=5,
+            total_tokens=20,
+        )
+        second = reserve_usage(
+            user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=70
+        )
         self.assertEqual(second.status, LLMUsage.Status.PENDING)
 
     @override_settings(
@@ -137,10 +168,16 @@ class LLMUsageTests(TestCase):
         GRAIDER_GLOBAL_MONTHLY_TOKENS=100,
     )
     def test_global_budget_counts_pending_requests_from_other_users(self):
-        other = User.objects.create_user(email="other@example.com", full_name="Other", password="StrongPass123!")
-        reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=80)
+        other = User.objects.create_user(
+            email="other@example.com", full_name="Other", password="StrongPass123!"
+        )
+        reserve_usage(
+            user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=80
+        )
         with self.assertRaisesMessage(LLMQuotaExceeded, "Graider's AI allowance"):
-            reserve_usage(user=other, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=30)
+            reserve_usage(
+                user=other, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=30
+            )
 
     @override_settings(
         GRAIDER_USER_DAILY_TOKENS=500,
@@ -148,23 +185,50 @@ class LLMUsageTests(TestCase):
         GRAIDER_GLOBAL_MONTHLY_TOKENS=500,
     )
     def test_monthly_user_budget_counts_previous_completed_usage(self):
-        first = reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=80)
-        finish_usage(first, status=LLMUsage.Status.SUCCEEDED, input_tokens=60, output_tokens=20, total_tokens=80)
+        first = reserve_usage(
+            user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=80
+        )
+        finish_usage(
+            first,
+            status=LLMUsage.Status.SUCCEEDED,
+            input_tokens=60,
+            output_tokens=20,
+            total_tokens=80,
+        )
         with self.assertRaisesMessage(LLMQuotaExceeded, "monthly AI allowance"):
-            reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=30)
+            reserve_usage(
+                user=self.user,
+                operation="answer_mapping",
+                model="gpt-5.4-mini",
+                estimated_tokens=30,
+            )
 
     @override_settings(GRAIDER_USER_AI_REQUESTS_PER_MINUTE=1)
     def test_request_burst_limit_counts_completed_calls(self):
-        first = reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=50)
-        finish_usage(first, status=LLMUsage.Status.SUCCEEDED, input_tokens=10, output_tokens=5, total_tokens=15)
+        first = reserve_usage(
+            user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=50
+        )
+        finish_usage(
+            first,
+            status=LLMUsage.Status.SUCCEEDED,
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+        )
         with self.assertRaisesMessage(LLMQuotaExceeded, "too quickly"):
-            reserve_usage(user=self.user, operation="answer_mapping", model="gpt-5.4-mini", estimated_tokens=50)
+            reserve_usage(
+                user=self.user,
+                operation="answer_mapping",
+                model="gpt-5.4-mini",
+                estimated_tokens=50,
+            )
 
     def test_provider_spend_limit_error_releases_reservation_and_returns_safe_message(self):
         request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
         response = httpx.Response(429, request=request, headers={"x-request-id": "req_limit"})
         self.provider_parse.side_effect = RateLimitError(
-            "Sensitive provider message", response=response,
+            "Sensitive provider message",
+            response=response,
             body={"code": "project_spend_limit_exceeded"},
         )
 

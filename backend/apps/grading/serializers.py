@@ -8,8 +8,8 @@ from .models import (
     ReferenceAnswer,
     RubricCriterion,
     StudentSubmission,
-    SubmissionImport,
     SubmissionAnswerPart,
+    SubmissionImport,
 )
 
 
@@ -147,10 +147,18 @@ class StudentSubmissionSerializer(serializers.ModelSerializer):
         )
 
     def get_response_file_url(self, obj):
-        return file_api_url("submission-response-file", submission_id=obj.id) if obj.response_file else None
+        return (
+            file_api_url("submission-response-file", submission_id=obj.id)
+            if obj.response_file
+            else None
+        )
 
     def get_response_filename(self, obj):
-        return (obj.response_original_filename or obj.response_file.name.split("/")[-1]) if obj.response_file else None
+        return (
+            (obj.response_original_filename or obj.response_file.name.split("/")[-1])
+            if obj.response_file
+            else None
+        )
 
 
 class SubmissionImportSerializer(serializers.ModelSerializer):

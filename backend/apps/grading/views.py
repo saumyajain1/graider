@@ -11,8 +11,12 @@ from rest_framework.views import APIView
 from apps.assignments.models import Assignment
 from apps.assignments.services import extract_text_from_uploaded_file, is_supported_text_upload
 from apps.uploads import (
-    check_file_size, check_submission_capacity, check_text_length,
-    original_name, private_file_response, stored_upload,
+    check_file_size,
+    check_submission_capacity,
+    check_text_length,
+    original_name,
+    private_file_response,
+    stored_upload,
 )
 
 from .models import (
@@ -23,8 +27,8 @@ from .models import (
     SubmissionImport,
 )
 from .serializers import (
-    GradingResultSerializer,
     GradingResultReviewSerializer,
+    GradingResultSerializer,
     ReferenceAnswerCreateSerializer,
     ReferenceAnswerItemSerializer,
     ReferenceAnswerWriteSerializer,
@@ -33,9 +37,9 @@ from .serializers import (
     RubricCriterionWriteSerializer,
     RubricQuestionSerializer,
     StudentSubmissionSerializer,
-    SubmissionImportSerializer,
     SubmissionCreateSerializer,
     SubmissionGradingSerializer,
+    SubmissionImportSerializer,
     build_reference_answer_item,
     build_rubric_question_item,
 )
@@ -46,7 +50,6 @@ from .services import (
     generate_rubric_criteria,
 )
 from .services.openai_client import LLMSpendLimitError, public_llm_error
-from .services.usage import LLMQuotaExceeded
 from .services.submission_io import (
     CsvImportError,
     build_assignment_results_csv_response,
@@ -60,6 +63,7 @@ from .services.submission_workflow import (
     run_grading_pipeline,
     save_grading_review,
 )
+from .services.usage import LLMQuotaExceeded
 
 
 def normalize_rubric_order(question_part):
@@ -131,7 +135,9 @@ class TeacherScopedArtifactView(APIView):
 
     def handle_llm_error(self, exc):
         if isinstance(exc, (LLMConfigurationError, LLMSpendLimitError)):
-            return Response({"detail": public_llm_error(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"detail": public_llm_error(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         return Response({"detail": public_llm_error(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
     def handle_quota_error(self, exc):
@@ -154,7 +160,9 @@ class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
             context={"assignment": assignment},
         )
         serializer.is_valid(raise_exception=True)
-        question_part = assignment.question_parts.get(id=serializer.validated_data["question_part_id"])
+        question_part = assignment.question_parts.get(
+            id=serializer.validated_data["question_part_id"]
+        )
         answer_text = serializer.validated_data["answer_text"]
         reference_answer, created = ReferenceAnswer.objects.get_or_create(
             question_part=question_part,
@@ -216,7 +224,9 @@ class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
 class ReferenceAnswerDetailView(TeacherScopedArtifactView):
     def patch(self, request, reference_answer_id):
         reference_answer = self.get_reference_answer(reference_answer_id)
-        serializer = ReferenceAnswerWriteSerializer(reference_answer, data=request.data, partial=True)
+        serializer = ReferenceAnswerWriteSerializer(
+            reference_answer, data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save(
             source=request.data.get("source", ReferenceAnswer.Source.TEACHER),
@@ -242,7 +252,9 @@ class RubricListCreateView(TeacherScopedArtifactView):
             context={"assignment": assignment},
         )
         serializer.is_valid(raise_exception=True)
-        question_part = assignment.question_parts.get(id=serializer.validated_data["question_part_id"])
+        question_part = assignment.question_parts.get(
+            id=serializer.validated_data["question_part_id"]
+        )
         criterion = RubricCriterion.objects.create(
             question_part=question_part,
             title=serializer.validated_data["title"],
@@ -278,7 +290,9 @@ class RubricGenerateView(TeacherScopedArtifactView):
                 references.append((question_part, question_part.reference_answer))
             except ReferenceAnswer.DoesNotExist:
                 return Response(
-                    {"detail": "Generate or create a reference answer before generating rubric criteria."},
+                    {
+                        "detail": "Generate or create a reference answer before generating rubric criteria."
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -415,7 +429,9 @@ class SubmissionImportCsvView(TeacherScopedArtifactView):
                 csv_import.save()
                 created = StudentSubmission.objects.bulk_create(submissions)
 
-        return Response(StudentSubmissionSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
+        return Response(
+            StudentSubmissionSerializer(created, many=True).data, status=status.HTTP_201_CREATED
+        )
 
 
 class SubmissionImportListView(TeacherScopedArtifactView):
@@ -440,7 +456,10 @@ class SubmissionDetailView(TeacherScopedArtifactView):
 class SubmissionResponseFileView(TeacherScopedArtifactView):
     def get(self, request, submission_id):
         submission = self.get_submission(submission_id)
-        filename = submission.response_original_filename or submission.response_file.name.rsplit("/", 1)[-1]
+        filename = (
+            submission.response_original_filename
+            or submission.response_file.name.rsplit("/", 1)[-1]
+        )
         return private_file_response(submission.response_file, filename)
 
 
@@ -472,12 +491,19 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
             )
         if len(submissions) > settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS:
             return Response(
-                {"detail": f"Grade at most {settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS} submissions at once."},
+                {
+                    "detail": f"Grade at most {settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS} submissions at once."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if question_queryset_for_assignment(assignment).count() > settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS:
+        if (
+            question_queryset_for_assignment(assignment).count()
+            > settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS
+        ):
             return Response(
-                {"detail": f"Grade-all supports at most {settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS} questions."},
+                {
+                    "detail": f"Grade-all supports at most {settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS} questions."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -502,7 +528,9 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
             {
                 "graded_count": graded,
                 "failed_count": failed,
-                "submissions": StudentSubmissionSerializer(assignment.submissions.all(), many=True).data,
+                "submissions": StudentSubmissionSerializer(
+                    assignment.submissions.all(), many=True
+                ).data,
             }
         )
 

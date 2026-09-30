@@ -3,8 +3,8 @@ from textwrap import dedent
 
 from apps.assignments.models import Assignment, QuestionPart
 
-from .openai_client import OpenAIChatService
 from .generation import build_shared_context, format_question_label
+from .openai_client import OpenAIChatService
 from .schemas import GeneratedQuestionGradeSchema, SubmissionAnswerMappingSchema
 
 MAPPING_MODEL = os.getenv("OPENAI_MAPPING_MODEL", "gpt-6-luna")

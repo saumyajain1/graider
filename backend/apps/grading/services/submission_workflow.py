@@ -1,6 +1,6 @@
-from decimal import Decimal
-from datetime import timedelta
 import logging
+from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import transaction
@@ -12,7 +12,6 @@ from ..models import GradingResult, ReferenceAnswer, StudentSubmission, Submissi
 from .grading_pipeline import grade_question_part, map_submission_answers
 from .openai_client import LLMConfigurationError, LLMGenerationError, public_llm_error
 from .usage import LLMQuotaExceeded
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,11 @@ def build_rubric_text(question_part):
 def calculate_submission_total(submission):
     total = Decimal("0")
     for result in submission.grading_results.all():
-        total += result.final_score if result.final_score is not None else result.ai_score or Decimal("0")
+        total += (
+            result.final_score
+            if result.final_score is not None
+            else result.ai_score or Decimal("0")
+        )
     return total
 
 
@@ -81,13 +84,12 @@ def run_grading_pipeline(submission):
     now = timezone.now()
     with transaction.atomic():
         submission = StudentSubmission.objects.select_for_update().get(pk=submission.pk)
-        if (
-            submission.grading_status in (
-                StudentSubmission.GradingStatus.GRADED,
-                StudentSubmission.GradingStatus.REVIEWED,
-                StudentSubmission.GradingStatus.FINALIZED,
-            )
-            and submission.updated_at >= now - timedelta(seconds=settings.GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS)
+        if submission.grading_status in (
+            StudentSubmission.GradingStatus.GRADED,
+            StudentSubmission.GradingStatus.REVIEWED,
+            StudentSubmission.GradingStatus.FINALIZED,
+        ) and submission.updated_at >= now - timedelta(
+            seconds=settings.GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS
         ):
             return submission
         if (
@@ -119,10 +121,13 @@ def run_grading_pipeline(submission):
         prepared = []
         for question in questions:
             mapping_item = mapping_by_key.get(question.part_key)
-            extracted_answer_text = mapping_item.extracted_answer_text.strip() if mapping_item else ""
+            extracted_answer_text = (
+                mapping_item.extracted_answer_text.strip() if mapping_item else ""
+            )
             mapping_confidence = (
                 Decimal(str(mapping_item.mapping_confidence))
-                if mapping_item and mapping_item.mapping_confidence is not None else None
+                if mapping_item and mapping_item.mapping_confidence is not None
+                else None
             )
             if extracted_answer_text:
                 grade = grade_question_part(
@@ -138,24 +143,41 @@ def run_grading_pipeline(submission):
                 reasoning_summary = grade.reasoning_summary
                 confidence_score = (
                     Decimal(str(grade.confidence_score))
-                    if grade.confidence_score is not None else None
+                    if grade.confidence_score is not None
+                    else None
                 )
                 needs_review = grade.needs_review
             else:
                 ai_score = Decimal("0")
                 ai_feedback = "No answer found for this question."
-                reasoning_summary = "The submission did not contain a usable answer for this question part."
+                reasoning_summary = (
+                    "The submission did not contain a usable answer for this question part."
+                )
                 confidence_score = Decimal("1.00")
                 needs_review = False
-            prepared.append((
-                question, extracted_answer_text, mapping_confidence, ai_score,
-                ai_feedback, reasoning_summary, confidence_score, needs_review,
-            ))
+            prepared.append(
+                (
+                    question,
+                    extracted_answer_text,
+                    mapping_confidence,
+                    ai_score,
+                    ai_feedback,
+                    reasoning_summary,
+                    confidence_score,
+                    needs_review,
+                )
+            )
 
         with transaction.atomic():
             for (
-                question, extracted_answer_text, mapping_confidence, ai_score,
-                ai_feedback, reasoning_summary, confidence_score, needs_review,
+                question,
+                extracted_answer_text,
+                mapping_confidence,
+                ai_score,
+                ai_feedback,
+                reasoning_summary,
+                confidence_score,
+                needs_review,
             ) in prepared:
                 answer_part, _ = SubmissionAnswerPart.objects.get_or_create(
                     submission=submission,

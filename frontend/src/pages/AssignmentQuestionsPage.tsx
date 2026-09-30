@@ -201,13 +201,7 @@ export function AssignmentQuestionsPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      questionId,
-      payload,
-    }: {
-      questionId: number
-      payload: QuestionEditorPayload
-    }) =>
+    mutationFn: ({ questionId, payload }: { questionId: number; payload: QuestionEditorPayload }) =>
       updateQuestion(questionId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
@@ -259,14 +253,11 @@ export function AssignmentQuestionsPage() {
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Create the question structure explicitly now. In the next phase, AI will be
-            able to generate question parts automatically, but manual editing remains the
-            source of truth.
+            Create the question structure explicitly now. In the next phase, AI will be able to
+            generate question parts automatically, but manual editing remains the source of truth.
           </p>
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold text-slate-500">
-            <span className="rounded-full bg-slate-100 px-3 py-1">
-              {questions.length} parts
-            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1">{questions.length} parts</span>
             <span className="rounded-full bg-slate-100 px-3 py-1">
               Status: {assignment.status.replace('_', ' ')}
             </span>
@@ -281,8 +272,8 @@ export function AssignmentQuestionsPage() {
             Questions become the backbone for answers and rubric generation.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Keep the hierarchy, context blocks, and marks clean. These records directly
-            drive the reference answers, rubric, mapping, and review screens.
+            Keep the hierarchy, context blocks, and marks clean. These records directly drive the
+            reference answers, rubric, mapping, and review screens.
           </p>
           <Link
             to={`/assignments/${assignment.id}/overview`}
@@ -313,9 +304,9 @@ export function AssignmentQuestionsPage() {
           Add question part
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          You can add parts manually or use AI generation above. Context rows can carry
-          shared setup for a top-level question like 1, while source labels preserve the
-          original numbering like 1.1 and 1.2.
+          You can add parts manually or use AI generation above. Context rows can carry shared setup
+          for a top-level question like 1, while source labels preserve the original numbering like
+          1.1 and 1.2.
         </p>
         <div className="mt-5 grid gap-4 lg:grid-cols-[0.18fr_0.18fr_0.18fr_0.16fr_1fr_auto]">
           <input
@@ -420,8 +411,8 @@ export function AssignmentQuestionsPage() {
             No question parts yet
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-            Start by adding one part for each question or context block in the
-            assignment. You can reorder them anytime.
+            Start by adding one part for each question or context block in the assignment. You can
+            reorder them anytime.
           </p>
         </section>
       )}

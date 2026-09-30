@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: graider
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/
+    maxShutdownDelaySeconds: 120
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: DJANGO_DEBUG
+        value: 'false'
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        value: ''
+      - key: DJANGO_CORS_ALLOWED_ORIGINS
+        value: ''
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        value: ''
+      - key: AWS_ENDPOINT_URL_S3
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-2
+      - key: NEON_STORAGE_BUCKET
+        value: uploads
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_QUESTION_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_ARTIFACT_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_MAPPING_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_GRADING_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_QUESTION_REASONING_EFFORT
+        value: medium
+      - key: OPENAI_QUESTION_REPAIR_REASONING_EFFORT
+        value: low
+      - key: OPENAI_REFERENCE_REASONING_EFFORT
+        value: medium
+      - key: OPENAI_RUBRIC_REASONING_EFFORT
+        value: medium
+      - key: OPENAI_MAPPING_REASONING_EFFORT
+        value: low
+      - key: OPENAI_GRADING_REASONING_EFFORT
+        value: medium
+      - key: OPENAI_TIMEOUT_SECONDS
+        value: '60'
+      - key: GUNICORN_WORKERS
+        value: '1'
+      - key: GUNICORN_THREADS
+        value: '4'
+      - key: GUNICORN_TIMEOUT_SECONDS
+        value: '120'
+      - key: GUNICORN_GRACEFUL_TIMEOUT_SECONDS
+        value: '120'

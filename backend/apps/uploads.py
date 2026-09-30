@@ -93,9 +93,7 @@ def private_file_response(field_file, filename):
     if settings.STORAGES["default"]["BACKEND"] == "storages.backends.s3.S3Storage":
         url = field_file.storage.url(
             field_file.name,
-            parameters={
-                "ResponseContentDisposition": content_disposition_header(True, filename)
-            },
+            parameters={"ResponseContentDisposition": content_disposition_header(True, filename)},
         )
         return HttpResponseRedirect(url)
     return FileResponse(field_file.open("rb"), as_attachment=True, filename=filename)

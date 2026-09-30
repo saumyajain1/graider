@@ -176,10 +176,7 @@ export function deleteRubricCriterion(criterionId: number) {
   })
 }
 
-export function generateRubric(
-  assignmentId: string,
-  payload?: { question_part_id?: number },
-) {
+export function generateRubric(assignmentId: string, payload?: { question_part_id?: number }) {
   return apiRequest<RubricQuestion[]>(`/api/assignments/${assignmentId}/rubric/generate`, {
     method: 'POST',
     body: JSON.stringify(payload ?? {}),

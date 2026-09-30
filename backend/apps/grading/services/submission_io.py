@@ -5,6 +5,7 @@ from django.conf import settings
 from django.http import HttpResponse
 
 from apps.uploads import UploadTooLarge, check_file_size, check_text_length
+
 from ..models import StudentSubmission
 from .submission_workflow import question_queryset_for_assignment
 
@@ -28,7 +29,11 @@ def parse_submissions_csv(assignment, uploaded_file):
         raise CsvImportError("CSV must include a student_name column.")
 
     response_field = next(
-        (candidate for candidate in ("response_text", "raw_response_text") if candidate in fieldnames),
+        (
+            candidate
+            for candidate in ("response_text", "raw_response_text")
+            if candidate in fieldnames
+        ),
         None,
     )
     if response_field is None:
@@ -57,8 +62,7 @@ def parse_submissions_csv(assignment, uploaded_file):
         if len(student_name) > 255:
             raise CsvImportError(f"Row {row_number} has a student name longer than 255 characters.")
         identifier = (
-            (row.get(identifier_field) or "").strip()
-            if identifier_field in fieldnames else ""
+            (row.get(identifier_field) or "").strip() if identifier_field in fieldnames else ""
         )
         if len(identifier) > 255:
             raise CsvImportError(f"Row {row_number} has an identifier longer than 255 characters.")
@@ -85,7 +89,9 @@ def build_assignment_results_csv_response(assignment):
     submissions = assignment.submissions.prefetch_related("grading_results").all()
 
     response = HttpResponse(content_type="text/csv")
-    response["Content-Disposition"] = f'attachment; filename="assignment-{assignment.id}-results.csv"'
+    response["Content-Disposition"] = (
+        f'attachment; filename="assignment-{assignment.id}-results.csv"'
+    )
 
     writer = csv.writer(response)
     header = [
@@ -116,7 +122,9 @@ def build_assignment_results_csv_response(assignment):
             score = ""
             feedback = ""
             if result is not None:
-                score = result.final_score if result.final_score is not None else result.ai_score or ""
+                score = (
+                    result.final_score if result.final_score is not None else result.ai_score or ""
+                )
                 feedback = result.final_feedback or result.ai_feedback
             row.extend([score, feedback])
         writer.writerow(row)

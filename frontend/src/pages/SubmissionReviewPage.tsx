@@ -215,8 +215,8 @@ export function SubmissionReviewPage() {
           </p>
           <h1 className="mt-3 section-title">{submission.student_name}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Review the AI pass question by question, edit marks or feedback, and finalize
-            when the result is ready to export.
+            Review the AI pass question by question, edit marks or feedback, and finalize when the
+            result is ready to export.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold">
@@ -240,8 +240,8 @@ export function SubmissionReviewPage() {
             Lock this student’s result once the review is done.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Finalize recalculates the total from the saved final scores and marks this
-            submission ready for export.
+            Finalize recalculates the total from the saved final scores and marks this submission
+            ready for export.
           </p>
           <button
             type="button"
@@ -296,8 +296,8 @@ export function SubmissionReviewPage() {
             No grading results yet
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-            This submission needs to be graded from the Submissions page before there is
-            anything to review here.
+            This submission needs to be graded from the Submissions page before there is anything to
+            review here.
           </p>
         </section>
       )}

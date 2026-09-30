@@ -62,11 +62,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
       )
     }
 
-    throw new ApiError(
-      'Could not connect to Graider. Please try again in a moment.',
-      0,
-      null,
-    )
+    throw new ApiError('Could not connect to Graider. Please try again in a moment.', 0, null)
   }
 
   if (timeoutId !== null) {

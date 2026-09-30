@@ -1,12 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import {
-  fetchCurrentUser,
-  login,
-  logout,
-  register,
-  type AuthPayload,
-} from '../api/auth'
+import { fetchCurrentUser, login, logout, register, type AuthPayload } from '../api/auth'
 import { ApiError } from '../api/client'
 
 export function useCurrentUser() {
@@ -18,7 +12,7 @@ export function useCurrentUser() {
   const user =
     query.isError && query.error instanceof ApiError && query.error.status === 401
       ? null
-      : query.data ?? null
+      : (query.data ?? null)
 
   return {
     ...query,

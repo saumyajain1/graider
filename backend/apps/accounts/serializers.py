@@ -4,7 +4,6 @@ from rest_framework import serializers
 
 from .models import User
 
-
 LOCAL_TEST_PASSWORD = "test1234"
 
 
@@ -43,9 +42,7 @@ class LoginSerializer(serializers.Serializer):
             password=attrs["password"],
         )
         if user is None:
-            raise serializers.ValidationError(
-                {"detail": "Invalid email or password."}
-            )
+            raise serializers.ValidationError({"detail": "Invalid email or password."})
 
         attrs["user"] = user
         return attrs

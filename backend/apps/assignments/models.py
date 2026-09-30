@@ -46,9 +46,7 @@ class Assignment(models.Model):
         if submissions is not None and submissions.exists():
             if submissions.exclude(grading_status="finalized").count() == 0:
                 return self.WorkflowStatus.FINALIZED
-            if submissions.filter(
-                grading_status__in=["graded", "reviewed", "finalized"]
-            ).exists():
+            if submissions.filter(grading_status__in=["graded", "reviewed", "finalized"]).exists():
                 return self.WorkflowStatus.REVIEW_READY
             return self.WorkflowStatus.SUBMISSIONS_UPLOADED
 

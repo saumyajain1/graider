@@ -8,7 +8,6 @@ from openai import APIConnectionError, InternalServerError, OpenAI, OpenAIError
 from ..models import LLMUsage
 from .usage import finish_usage, reserve_usage
 
-
 logger = logging.getLogger(__name__)
 
 OPERATION_OUTPUT_CAPS = {
@@ -50,7 +49,9 @@ class LLMSpendLimitError(LLMGenerationError):
 
 def public_llm_error(exc):
     if isinstance(exc, LLMSpendLimitError):
-        return "AI is unavailable because its spending limit has been reached. Please try again later."
+        return (
+            "AI is unavailable because its spending limit has been reached. Please try again later."
+        )
     if isinstance(exc, LLMConfigurationError):
         return "AI is temporarily unavailable. Please try again later."
     return "AI request failed. Please try again."
@@ -85,7 +86,11 @@ def _provider_error_code(exc):
 def _estimate_tokens(system_prompt, user_prompt, response_format, max_output_tokens):
     schema = json.dumps(response_format.model_json_schema(), ensure_ascii=False)
     # Each UTF-8 byte is charged as one estimated input token, plus framing headroom.
-    return sum(len(text.encode("utf-8")) for text in (system_prompt, user_prompt, schema)) + 256 + max_output_tokens
+    return (
+        sum(len(text.encode("utf-8")) for text in (system_prompt, user_prompt, schema))
+        + 256
+        + max_output_tokens
+    )
 
 
 class OpenAIChatService:
@@ -119,7 +124,9 @@ class OpenAIChatService:
         if operation not in OPERATION_OUTPUT_CAPS:
             raise ValueError(f"Unknown AI operation: {operation}")
         reasoning_effort = get_reasoning_effort(operation)
-        max_output_tokens = min(settings.GRAIDER_MAX_OUTPUT_TOKENS, OPERATION_OUTPUT_CAPS[operation])
+        max_output_tokens = min(
+            settings.GRAIDER_MAX_OUTPUT_TOKENS, OPERATION_OUTPUT_CAPS[operation]
+        )
         usage_row = reserve_usage(
             user=user,
             operation=operation,
@@ -158,7 +165,9 @@ class OpenAIChatService:
         input_tokens = getattr(provider_usage, "prompt_tokens", None)
         output_tokens = getattr(provider_usage, "completion_tokens", None)
         total_tokens = getattr(provider_usage, "total_tokens", None)
-        metered = all(isinstance(value, int) for value in (input_tokens, output_tokens, total_tokens))
+        metered = all(
+            isinstance(value, int) for value in (input_tokens, output_tokens, total_tokens)
+        )
         try:
             message = completion.choices[0].message
             refusal = getattr(message, "refusal", None)
@@ -170,8 +179,12 @@ class OpenAIChatService:
         finish_usage(
             usage_row,
             status=(
-                LLMUsage.Status.SUCCEEDED if parsed is not None and not refusal else LLMUsage.Status.FAILED
-            ) if metered else LLMUsage.Status.UNMETERED,
+                LLMUsage.Status.SUCCEEDED
+                if parsed is not None and not refusal
+                else LLMUsage.Status.FAILED
+            )
+            if metered
+            else LLMUsage.Status.UNMETERED,
             input_tokens=input_tokens if metered else 0,
             output_tokens=output_tokens if metered else 0,
             total_tokens=total_tokens if metered else 0,

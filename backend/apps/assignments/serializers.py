@@ -1,10 +1,14 @@
-from rest_framework import serializers
 from django.conf import settings
 from django.db import transaction
+from rest_framework import serializers
 
 from apps.uploads import (
-    check_file_size, check_text_length, delete_name_after_commit,
-    file_api_url, original_name, stored_upload,
+    check_file_size,
+    check_text_length,
+    delete_name_after_commit,
+    file_api_url,
+    original_name,
+    stored_upload,
 )
 
 from .models import Assignment, QuestionPart
@@ -69,7 +73,8 @@ class AssignmentSerializer(serializers.ModelSerializer):
             check_file_size(uploaded_file, settings.GRAIDER_MAX_UPLOAD_BYTES)
         if "raw_assignment_text" in attrs:
             check_text_length(
-                attrs["raw_assignment_text"], settings.GRAIDER_MAX_ASSIGNMENT_CHARS,
+                attrs["raw_assignment_text"],
+                settings.GRAIDER_MAX_ASSIGNMENT_CHARS,
                 "Assignment text",
             )
 
@@ -77,11 +82,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
             raw_text = attrs.get("raw_assignment_text", "").strip()
             if not raw_text and uploaded_file is None:
                 raise serializers.ValidationError(
-                    {
-                        "raw_assignment_text": (
-                            "Provide assignment text or upload a .txt/.pdf file."
-                        )
-                    }
+                    {"raw_assignment_text": ("Provide assignment text or upload a .txt/.pdf file.")}
                 )
         return attrs
 
@@ -97,11 +98,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
         if not raw_text:
             if not extracted_text:
                 raise serializers.ValidationError(
-                    {
-                        "source_file": (
-                            note or "No extractable text was found in the uploaded file."
-                        )
-                    }
+                    {"source_file": (note or "No extractable text was found in the uploaded file.")}
                 )
             validated_data["raw_assignment_text"] = extracted_text
         validated_data["ingestion_notes"] = note
@@ -131,11 +128,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
                 instance.raw_assignment_text = extracted_text
             if not raw_text_provided and not extracted_text:
                 raise serializers.ValidationError(
-                    {
-                        "source_file": (
-                            note or "No extractable text was found in the uploaded file."
-                        )
-                    }
+                    {"source_file": (note or "No extractable text was found in the uploaded file.")}
                 )
 
         for attr, value in validated_data.items():
@@ -155,10 +148,18 @@ class AssignmentSerializer(serializers.ModelSerializer):
         return instance
 
     def get_source_file_url(self, obj):
-        return file_api_url("assignment-source-file", assignment_id=obj.id) if obj.source_file else None
+        return (
+            file_api_url("assignment-source-file", assignment_id=obj.id)
+            if obj.source_file
+            else None
+        )
 
     def get_source_filename(self, obj):
-        return (obj.source_original_filename or obj.source_file.name.split("/")[-1]) if obj.source_file else None
+        return (
+            (obj.source_original_filename or obj.source_file.name.split("/")[-1])
+            if obj.source_file
+            else None
+        )
 
     def get_status(self, obj):
         return obj.workflow_status

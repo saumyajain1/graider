@@ -32,8 +32,8 @@ export function AssignmentCreatePage() {
         </p>
         <h1 className="mt-3 section-title">Start a new grading project</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          Paste the assignment prompt, upload a .txt file, or try a PDF extraction. You
-          can edit the resulting text immediately after creation.
+          Paste the assignment prompt, upload a .txt file, or try a PDF extraction. You can edit the
+          resulting text immediately after creation.
         </p>
       </div>
 
@@ -45,9 +45,7 @@ export function AssignmentCreatePage() {
         }}
       >
         <section className="rounded-[2rem] border border-slate-200 p-6">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            Core details
-          </h2>
+          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">Core details</h2>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Title</span>
@@ -62,9 +60,7 @@ export function AssignmentCreatePage() {
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Course name
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Course name</span>
               <input
                 value={form.course_name}
                 onChange={(event) =>
@@ -75,9 +71,7 @@ export function AssignmentCreatePage() {
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Description
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Description</span>
               <textarea
                 rows={4}
                 value={form.description}
@@ -92,9 +86,7 @@ export function AssignmentCreatePage() {
         </section>
 
         <section className="rounded-[2rem] border border-slate-200 p-6">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            Source text
-          </h2>
+          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">Source text</h2>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">
@@ -114,9 +106,7 @@ export function AssignmentCreatePage() {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Assignment text
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Assignment text</span>
               <textarea
                 rows={14}
                 value={form.raw_assignment_text}

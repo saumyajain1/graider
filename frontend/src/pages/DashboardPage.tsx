@@ -46,8 +46,8 @@ export function DashboardPage() {
             Open an assignment, continue grading, or start a new one.
           </h1>
           <p className="mt-4 max-w-2xl text-sm text-fuchsia-100/72 md:text-base">
-            Use this space to move between assignment setup, submissions, review, and
-            export without jumping between separate tools.
+            Use this space to move between assignment setup, submissions, review, and export without
+            jumping between separate tools.
           </p>
           <div className="mt-8">
             <Link
@@ -178,8 +178,8 @@ export function DashboardPage() {
               No assignments yet
             </h3>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-              Start with one assignment. You can paste the prompt, upload a .txt or PDF,
-              then manually clean up the extracted text before moving to question setup.
+              Start with one assignment. You can paste the prompt, upload a .txt or PDF, then
+              manually clean up the extracted text before moving to question setup.
             </p>
             <Link
               to="/assignments/new"

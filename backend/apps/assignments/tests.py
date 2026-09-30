@@ -70,12 +70,14 @@ class AssignmentApiTests(APITestCase):
             self.client.get(reverse("assignment-detail", args=[other_assignment.id])),
             self.client.patch(
                 reverse("assignment-detail", args=[other_assignment.id]),
-                {"title": "Changed"}, format="json",
+                {"title": "Changed"},
+                format="json",
             ),
             self.client.get(reverse("question-list", args=[other_assignment.id])),
             self.client.patch(
                 reverse("question-detail", args=[other_question.id]),
-                {"text": "Changed"}, format="json",
+                {"text": "Changed"},
+                format="json",
             ),
         ):
             self.assertEqual(response.status_code, 404)
