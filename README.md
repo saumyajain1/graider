@@ -26,8 +26,8 @@ Requires Docker Desktop. The published image includes the frontend and backend; 
 ```bash
 mkdir graider-demo
 cd graider-demo
-curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/codex/graider-deployment/compose.yaml -o compose.yaml
-curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/codex/graider-deployment/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/feat/production-deployment/compose.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/feat/production-deployment/.env.example -o .env
 ```
 
 Set a unique `DJANGO_SECRET_KEY` in `.env`; add `OPENAI_API_KEY` for AI features, or leave it empty for manual use. Then run:
@@ -38,13 +38,13 @@ docker compose up -d
 
 Open [localhost:8000](http://localhost:8000). SQLite data and uploads persist in Docker volumes. `docker compose down` stops the app; adding `--volumes` deletes that local data. To update, run `docker compose pull` followed by `docker compose up -d`.
 
-The `preview` image tracks the deployment branch. After the PR merges, `latest` is published from `main`; set `GRAIDER_IMAGE_TAG=latest` in `.env` to use it. Images support Intel/AMD and Apple Silicon.
+The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). `preview` follows the deployment branch after passing CI; every merge to `main` publishes a commit tag, and the newest passing merge updates `latest`. Set `GRAIDER_IMAGE_TAG=latest` in `.env` to follow releases. Images support Intel/AMD and Apple Silicon.
 
 ## Deploy on Render
 
-1. Use the published image; GitHub CI builds it only after all checks pass.
+1. Use the published Docker Hub image; GitHub Actions releases new images only after all checks pass.
 2. Create a Neon PostgreSQL database and a private `uploads` bucket on the same branch in AWS US East 2 (Ohio).
-3. In Render, create a **Blueprint** from `codex/graider-deployment` using [render.yaml](render.yaml). It defines a free web service in Ohio that pulls the published image.
+3. In Render, create a **Blueprint** from `feat/production-deployment` using [render.yaml](render.yaml). It defines a free web service in Ohio that pulls the published image.
 4. Supply the environment values below and deploy.
 
 | Setting                                                                      | Production value                                                               |
@@ -60,14 +60,28 @@ The `preview` image tracks the deployment branch. After the PR merges, `latest` 
 
 Enter credentials in Render's environment settings; do not upload `.env`. Set a monthly spend cap for the OpenAI project. [.env.example](.env.example) lists optional model, reasoning, upload, token quota, and server overrides.
 
-The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. Redeploy manually on Render after publishing a new image; switch its image tag to `latest` after merging the PR. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
+The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. GitHub Actions triggers Render after publishing when its deploy hook is configured below. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
+
+## CI/CD
+
+Pull requests run lint, formatting, backend tests, frontend builds, and production/container checks. After a merge to `main`, GitHub Actions builds both image architectures, pushes `saumyaj1/graider:sha-<commit>`, updates `latest` for the newest passing merge, and triggers Render with that exact commit image. Merge builds queue instead of canceling each other.
+
+Configure **GitHub → Settings → Secrets and variables → Actions**:
+
+| Type     | Name                 | Value                                                   |
+| -------- | -------------------- | ------------------------------------------------------- |
+| Variable | `DOCKERHUB_USERNAME` | `saumyaj1`                                              |
+| Secret   | `DOCKERHUB_TOKEN`    | Docker Hub personal access token with Read/Write access |
+| Secret   | `RENDER_DEPLOY_HOOK` | Deploy Hook URL from the Render service's Settings page |
+
+Keep the Docker Hub repository public so local users and Render can pull without credentials. Docker Desktop login is local to your computer; GitHub Actions uses its own token. Until the Render hook is added, the workflow publishes images and reports that deployment setup is pending.
 
 ## Develop from source
 
 For live reload and code changes, use Python 3.11 and Node.js 24:
 
 ```bash
-git clone --branch codex/graider-deployment https://github.com/saumyajain1/graider.git
+git clone --branch feat/production-deployment https://github.com/saumyajain1/graider.git
 cd graider
 cp .env.example .env
 python3.11 -m venv .venv

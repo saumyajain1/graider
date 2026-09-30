@@ -1,8 +1,10 @@
-name: CI
+name: CI/CD
 
 on:
   pull_request:
+    branches: [main]
   push:
+    branches: [main, feat/production-deployment]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  queue: max
 
 jobs:
   verify:
@@ -107,7 +109,7 @@ jobs:
       - name: Check Docker quickstart and persistent local data
         run: |
           cp .env.example .env
-          docker tag graider:ci ghcr.io/saumyajain1/graider:ci
+          docker tag graider:ci saumyaj1/graider:ci
           GRAIDER_IMAGE_TAG=ci docker compose --project-name graider-local up --detach --pull never
           curl --fail --retry 40 --retry-delay 1 --retry-all-errors http://127.0.0.1:8000/health/
           docker compose --project-name graider-local exec --no-TTY graider \
@@ -127,43 +129,73 @@ jobs:
 
   publish-image:
     needs: verify
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/graider-deployment')
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/production-deployment')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      current: ${{ steps.release.outputs.current }}
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check Docker Hub configuration
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo '::error::Set the DOCKERHUB_USERNAME repository variable and DOCKERHUB_TOKEN repository secret.'
+            exit 1
+          fi
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set image tags
-        id: image
-        run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          tag=preview
-          if [ "$GITHUB_REF" = refs/heads/main ]; then
-            tag=latest
-          fi
-          {
-            echo "name=$image"
-            echo "tag=$tag"
-          } >> "$GITHUB_OUTPUT"
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ steps.image.outputs.name }}:${{ steps.image.outputs.tag }}
-            ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+            ${{ vars.DOCKERHUB_USERNAME }}/graider:sha-${{ github.sha }}
+            ${{ github.ref == 'refs/heads/feat/production-deployment' && format('{0}/graider:preview', vars.DOCKERHUB_USERNAME) || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Promote the current main image to latest
+        if: github.ref == 'refs/heads/main'
+        id: release
+        run: |
+          current_main=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$GITHUB_SHA" != "$current_main" ]; then
+            echo 'A newer merge is queued; this image remains available under its commit tag.'
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          docker buildx imagetools create \
+            --tag "$DOCKERHUB_USERNAME/graider:latest" \
+            "$DOCKERHUB_USERNAME/graider:sha-$GITHUB_SHA"
+          echo 'current=true' >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: publish-image
+    if: needs.publish-image.outputs.current == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+    steps:
+      - name: Report pending Render setup
+        if: env.RENDER_DEPLOY_HOOK == ''
+        run: echo '::notice::Image published. Set RENDER_DEPLOY_HOOK to enable automatic Render deployment.'
+      - name: Trigger Render with the published commit image
+        if: env.RENDER_DEPLOY_HOOK != ''
+        env:
+          IMAGE_URL: docker.io/${{ vars.DOCKERHUB_USERNAME }}/graider:sha-${{ github.sha }}
+        run: |
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+            --request POST --get --data-urlencode "imgURL=$IMAGE_URL" \
+            --output /dev/null "$RENDER_DEPLOY_HOOK"
