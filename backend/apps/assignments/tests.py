@@ -53,6 +53,38 @@ class AssignmentApiTests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["id"], own_assignment.id)
 
+    def test_other_teacher_cannot_read_or_change_assignment_and_questions(self):
+        other_assignment = Assignment.objects.create(
+            teacher=self.other_user,
+            title="Private Assignment",
+            raw_assignment_text="Private question",
+        )
+        other_question = QuestionPart.objects.create(
+            assignment=other_assignment,
+            part_key="Q1",
+            text="Private question",
+            display_order=0,
+        )
+
+        for response in (
+            self.client.get(reverse("assignment-detail", args=[other_assignment.id])),
+            self.client.patch(
+                reverse("assignment-detail", args=[other_assignment.id]),
+                {"title": "Changed"}, format="json",
+            ),
+            self.client.get(reverse("question-list", args=[other_assignment.id])),
+            self.client.patch(
+                reverse("question-detail", args=[other_question.id]),
+                {"text": "Changed"}, format="json",
+            ),
+        ):
+            self.assertEqual(response.status_code, 404)
+
+        other_assignment.refresh_from_db()
+        other_question.refresh_from_db()
+        self.assertEqual(other_assignment.title, "Private Assignment")
+        self.assertEqual(other_question.text, "Private question")
+
     def test_create_assignment_from_raw_text(self):
         response = self.client.post(
             reverse("assignment-list"),
@@ -246,4 +278,4 @@ class AssignmentApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.data["detail"], "Malformed model output.")
+        self.assertEqual(response.data["detail"], "AI request failed. Please try again.")

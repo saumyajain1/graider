@@ -15,6 +15,7 @@ from apps.grading.services import (
     LLMGenerationError,
     generate_question_parts,
 )
+from apps.grading.services.openai_client import public_llm_error
 
 
 def normalize_question_order(assignment):
@@ -135,12 +136,12 @@ class QuestionGenerateView(TeacherScopedView):
             parsed = generate_question_parts(assignment)
         except LLMConfigurationError as exc:
             return Response(
-                {"detail": str(exc)},
+                {"detail": public_llm_error(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except LLMGenerationError as exc:
             return Response(
-                {"detail": str(exc)},
+                {"detail": public_llm_error(exc)},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 

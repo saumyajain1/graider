@@ -36,6 +36,10 @@ class ProductionSettingsTests(SimpleTestCase):
             "'cors': settings.CORS_ALLOWED_ORIGINS, "
             "'csrf': settings.CSRF_TRUSTED_ORIGINS, "
             "'ssl_redirect': settings.SECURE_SSL_REDIRECT, "
+            "'hsts_seconds': settings.SECURE_HSTS_SECONDS, "
+            "'referrer_policy': settings.SECURE_REFERRER_POLICY, "
+            "'nosniff': settings.SECURE_CONTENT_TYPE_NOSNIFF, "
+            "'frame_options': settings.X_FRAME_OPTIONS, "
             "'secure_session': settings.SESSION_COOKIE_SECURE, "
             "'secure_csrf': settings.CSRF_COOKIE_SECURE"
             "}))"
@@ -79,6 +83,10 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertEqual(config["cors"], ["https://example.com"])
         self.assertEqual(config["csrf"], ["https://example.com"])
         self.assertTrue(config["ssl_redirect"])
+        self.assertEqual(config["hsts_seconds"], 3600)
+        self.assertEqual(config["referrer_policy"], "same-origin")
+        self.assertTrue(config["nosniff"])
+        self.assertEqual(config["frame_options"], "DENY")
         self.assertTrue(config["secure_session"])
         self.assertTrue(config["secure_csrf"])
 
@@ -93,6 +101,31 @@ class ProductionSettingsTests(SimpleTestCase):
         result = self.load_settings(DJANGO_DEBUG="perhaps")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("DJANGO_DEBUG", result.stderr)
+
+    def test_invalid_auth_throttle_rate_fails_closed(self):
+        result = self.load_settings(GRAIDER_LOGIN_RATE="not-a-rate")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("GRAIDER_LOGIN_RATE", result.stderr)
+
+    @override_settings(
+        DEBUG=False,
+        SECURE_SSL_REDIRECT=True,
+        SECURE_HSTS_SECONDS=3600,
+        SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+    )
+    def test_production_redirect_and_security_headers(self):
+        redirect = self.client.get("/health/", HTTP_HOST="localhost")
+        self.assertEqual(redirect.status_code, 301)
+        self.assertEqual(redirect["Location"], "https://localhost/health/")
+
+        response = self.client.get(
+            "/health/", HTTP_HOST="localhost", HTTP_X_FORWARDED_PROTO="https"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Strict-Transport-Security"], "max-age=3600")
+        self.assertEqual(response["Referrer-Policy"], "same-origin")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response["X-Frame-Options"], "DENY")
 
 
 class FrontendRouteTests(SimpleTestCase):
@@ -146,9 +179,10 @@ class SameOriginAuthTests(TestCase):
                     }),
                     content_type="application/json",
                     HTTP_X_CSRFTOKEN=csrf_token,
+                    HTTP_ORIGIN="https://localhost",
                     secure=True,
                 )
-                self.assertEqual(registered.status_code, 201)
+                self.assertEqual(registered.status_code, 201, registered.content)
                 self.assertIn("sessionid", registered.cookies)
                 self.assertTrue(registered.cookies["sessionid"]["secure"])
                 self.assertEqual(

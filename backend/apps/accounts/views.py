@@ -1,15 +1,19 @@
 from django.contrib.auth import login, logout
 from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from .throttles import IPScopedRateThrottle
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [IPScopedRateThrottle]
+    throttle_scope = "auth_register"
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -19,8 +23,11 @@ class RegisterView(APIView):
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [IPScopedRateThrottle]
+    throttle_scope = "auth_login"
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data, context={"request": request})
@@ -30,6 +37,7 @@ class LoginView(APIView):
         return Response(UserSerializer(user).data)
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class LogoutView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -42,6 +50,8 @@ class LogoutView(APIView):
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class MeView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [IPScopedRateThrottle]
+    throttle_scope = "auth_me"
 
     def get(self, request):
         if not request.user.is_authenticated:

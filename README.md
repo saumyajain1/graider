@@ -87,6 +87,12 @@ cd ..
 
 Django serves the React page for browser routes, and WhiteNoise serves its compiled assets from `/static/frontend/`. The API remains under `/api/` on the same origin; original uploads remain in private Neon storage. `GET /health/` provides a lightweight health check. The deployment build/start commands are configured in a later step.
 
+## Authentication and security (Step 4)
+
+Graider keeps Django session login. Login, registration, and logout require a CSRF token; the frontend obtains it from `GET /api/auth/me` and sends it with writes. Production requires HTTPS, sets secure cookies and browser security headers, and accepts only the hostnames in `DJANGO_ALLOWED_HOSTS`. The initial HSTS duration is one hour without subdomain or preload directives, suitable while using a Render-provided hostname.
+
+Login, registration, and auth-status requests have basic per-IP limits. Their defaults are `10/min`, `5/hour`, and `120/min`; change `GRAIDER_LOGIN_RATE`, `GRAIDER_REGISTER_RATE`, and `GRAIDER_AUTH_CHECK_RATE` if needed. These use Django's local in-memory cache, so counters reset when the process restarts and are not a hard abuse or cost boundary. The global AI budget in Step 5 is the cost boundary.
+
 ## CSV format
 
 Graider accepts CSV imports with:

@@ -59,6 +59,46 @@ class GradingArtifactApiTests(APITestCase):
         self.assertEqual(ReferenceAnswer.objects.count(), 1)
         self.assertEqual(response.data[0]["answer_text"], "A strong answer defines osmosis.")
 
+    def test_other_teacher_cannot_read_or_change_grading_records(self):
+        other_teacher = User.objects.create_user(
+            email="private@example.com", full_name="Private", password="StrongPass123!"
+        )
+        other_assignment = Assignment.objects.create(
+            teacher=other_teacher, title="Private Assignment", raw_assignment_text="Private"
+        )
+        other_question = QuestionPart.objects.create(
+            assignment=other_assignment, part_key="Q1", text="Private", display_order=0
+        )
+        other_answer = ReferenceAnswer.objects.create(
+            question_part=other_question, answer_text="Private answer"
+        )
+        other_submission = StudentSubmission.objects.create(
+            assignment=other_assignment, student_name="Private Student", raw_response_text="Private"
+        )
+        other_result = GradingResult.objects.create(
+            submission=other_submission, question_part=other_question, max_score="5"
+        )
+
+        for response in (
+            self.client.get(reverse("reference-answer-list", args=[other_assignment.id])),
+            self.client.get(reverse("submission-list", args=[other_assignment.id])),
+            self.client.get(reverse("submission-detail", args=[other_submission.id])),
+            self.client.patch(
+                reverse("reference-answer-detail", args=[other_answer.id]),
+                {"answer_text": "Changed"}, format="json",
+            ),
+            self.client.patch(
+                reverse("grading-result-detail", args=[other_result.id]),
+                {"final_score": "4"}, format="json",
+            ),
+        ):
+            self.assertEqual(response.status_code, 404)
+
+        other_answer.refresh_from_db()
+        other_result.refresh_from_db()
+        self.assertEqual(other_answer.answer_text, "Private answer")
+        self.assertIsNone(other_result.final_score)
+
     @patch("apps.grading.views.generate_reference_answer")
     def test_reference_answer_generation_surfaces_llm_failures(self, generate_reference_answer_mock):
         from apps.grading.services import LLMGenerationError
@@ -72,7 +112,7 @@ class GradingArtifactApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.data["detail"], "Malformed model output.")
+        self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
 
     def test_manual_reference_answer_create_and_patch(self):
         create_response = self.client.post(
@@ -239,6 +279,30 @@ class GradingArtifactApiTests(APITestCase):
         self.assertEqual(str(submission.total_score), "4.00")
         self.assertEqual(SubmissionAnswerPart.objects.count(), 1)
         self.assertEqual(GradingResult.objects.count(), 1)
+
+    @patch("apps.grading.services.submission_workflow.logger")
+    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    def test_grading_failure_does_not_expose_provider_details(self, map_answers, _logger):
+        from .services import LLMGenerationError
+
+        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
+        RubricCriterion.objects.create(
+            question_part=self.question, title="Accuracy", description="Accurate",
+            max_points="5",
+        )
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment, student_name="Alice", raw_response_text="Answer"
+        )
+        map_answers.side_effect = LLMGenerationError("provider request id and private details")
+
+        response = self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
+        submission.refresh_from_db()
+        self.assertEqual(submission.last_error, "AI request failed. Please try again.")
+        self.assertNotIn("private details", str(self.client.get(
+            reverse("submission-detail", args=[submission.id])
+        ).data))
 
     @patch("apps.grading.services.submission_workflow.grade_question_part")
     @patch("apps.grading.services.submission_workflow.map_submission_answers")

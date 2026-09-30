@@ -45,6 +45,7 @@ from .services import (
     generate_reference_answer,
     generate_rubric_criteria,
 )
+from .services.openai_client import public_llm_error
 from .services.submission_io import (
     CsvImportError,
     build_assignment_results_csv_response,
@@ -128,8 +129,8 @@ class TeacherScopedArtifactView(APIView):
 
     def handle_llm_error(self, exc):
         if isinstance(exc, LLMConfigurationError):
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+            return Response({"detail": public_llm_error(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({"detail": public_llm_error(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 class ReferenceAnswerListCreateView(TeacherScopedArtifactView):

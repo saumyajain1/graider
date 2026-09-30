@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 
 from django.db import transaction
 from django.utils import timezone
@@ -7,6 +8,10 @@ from apps.assignments.models import QuestionPart
 
 from ..models import GradingResult, ReferenceAnswer, StudentSubmission, SubmissionAnswerPart
 from .grading_pipeline import grade_question_part, map_submission_answers
+from .openai_client import LLMConfigurationError, LLMGenerationError, public_llm_error
+
+
+logger = logging.getLogger(__name__)
 
 
 class SubmissionNotReadyError(ValueError):
@@ -173,8 +178,14 @@ def run_grading_pipeline(submission):
                 update_fields=("total_score", "grading_status", "last_error", "updated_at")
             )
     except Exception as exc:
+        logger.exception("Grading failed for submission %s", submission.pk)
         submission.grading_status = StudentSubmission.GradingStatus.FAILED
-        submission.last_error = str(exc)
+        if isinstance(exc, SubmissionNotReadyError):
+            submission.last_error = str(exc)
+        elif isinstance(exc, (LLMConfigurationError, LLMGenerationError)):
+            submission.last_error = public_llm_error(exc)
+        else:
+            submission.last_error = "Grading failed. Please try again."
         submission.save(update_fields=("grading_status", "last_error", "updated_at"))
         raise
 

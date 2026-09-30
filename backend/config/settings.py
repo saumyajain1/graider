@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 import dj_database_url
@@ -31,6 +32,13 @@ def _positive_int_env(name, default):
         raise ImproperlyConfigured(f"{name} must be a positive integer.") from exc
     if value <= 0:
         raise ImproperlyConfigured(f"{name} must be a positive integer.")
+    return value
+
+
+def _throttle_rate_env(name, default):
+    value = os.getenv(name, default)
+    if not re.fullmatch(r"[1-9][0-9]*/(second|minute|hour|day|sec|min|hr|s|m|h|d)", value):
+        raise ImproperlyConfigured(f"{name} must be a positive rate such as 10/min.")
     return value
 
 
@@ -204,12 +212,22 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_login": _throttle_rate_env("GRAIDER_LOGIN_RATE", "10/min"),
+        "auth_register": _throttle_rate_env("GRAIDER_REGISTER_RATE", "5/hour"),
+        "auth_me": _throttle_rate_env("GRAIDER_AUTH_CHECK_RATE", "120/min"),
+    },
 }
 
 CORS_ALLOWED_ORIGINS = _csv_env("DJANGO_CORS_ALLOWED_ORIGINS", FRONTEND_URL)
 CSRF_TRUSTED_ORIGINS = _csv_env("DJANGO_CSRF_TRUSTED_ORIGINS", FRONTEND_URL)
 CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # React reads this cookie and sends X-CSRFToken.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
 
 # Render terminates HTTPS at its proxy and forwards the original scheme.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if not DEBUG else None

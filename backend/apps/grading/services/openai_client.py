@@ -12,6 +12,12 @@ class LLMGenerationError(Exception):
     pass
 
 
+def public_llm_error(exc):
+    if isinstance(exc, LLMConfigurationError):
+        return "AI is temporarily unavailable. Please try again later."
+    return "AI request failed. Please try again."
+
+
 def get_float_env(name, default):
     try:
         return float(os.getenv(name, default))
