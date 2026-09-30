@@ -98,7 +98,7 @@ jobs:
             --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY \
             --env FRONTEND_URL= --env DJANGO_CORS_ALLOWED_ORIGINS= \
             --env DJANGO_CSRF_TRUSTED_ORIGINS= --env OPENAI_API_KEY= graider:ci
-          curl --fail --retry 40 --retry-delay 1 --retry-connrefused \
+          curl --fail --retry 40 --retry-delay 1 --retry-all-errors \
             --header 'X-Forwarded-Proto: https' http://127.0.0.1:10000/health/
           curl --fail --header 'X-Forwarded-Proto: https' \
             http://127.0.0.1:10000/assignments/123/questions
@@ -109,12 +109,12 @@ jobs:
           cp .env.example .env
           docker tag graider:ci ghcr.io/saumyajain1/graider:ci
           GRAIDER_IMAGE_TAG=ci docker compose --project-name graider-local up --detach --pull never
-          curl --fail --retry 40 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health/
+          curl --fail --retry 40 --retry-delay 1 --retry-all-errors http://127.0.0.1:8000/health/
           docker compose --project-name graider-local exec --no-TTY graider \
             python manage.py shell -c 'from django.contrib.auth import get_user_model; from django.core.files.storage import default_storage; from django.core.files.base import ContentFile; get_user_model().objects.create_user(email="persistence@example.com", password="LocalTest123!"); default_storage.save("persistence.txt", ContentFile(b"persistent upload"))'
           docker compose --project-name graider-local down
           GRAIDER_IMAGE_TAG=ci docker compose --project-name graider-local up --detach --pull never
-          curl --fail --retry 40 --retry-delay 1 --retry-connrefused http://127.0.0.1:8000/health/
+          curl --fail --retry 40 --retry-delay 1 --retry-all-errors http://127.0.0.1:8000/health/
           docker compose --project-name graider-local exec --no-TTY graider \
             python manage.py shell -c 'from django.contrib.auth import get_user_model; from django.core.files.storage import default_storage; assert get_user_model().objects.filter(email="persistence@example.com").exists(); assert default_storage.open("persistence.txt").read() == b"persistent upload"'
       - name: Container logs and cleanup
