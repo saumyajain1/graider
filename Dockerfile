@@ -19,6 +19,7 @@ COPY --from=frontend /build/frontend/dist /app/frontend/dist
 # Static collection needs no database, storage credentials, or OpenAI key.
 RUN DJANGO_DEBUG=true DJANGO_SECRET_KEY=build-only-static-collection \
   python manage.py collectstatic --noinput \
+  && mkdir -p /app/data /app/backend/media \
   && useradd --create-home --user-group --uid 10001 graider \
   && chown -R graider:graider /app
 USER 10001:10001

@@ -53,6 +53,9 @@ if not DEBUG and (
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be a strong, unique value.")
 
 ALLOWED_HOSTS = _csv_env("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost" if DEBUG else "")
+_render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if not DEBUG and _render_hostname and _render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_hostname)
 if not DEBUG and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
     raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must list explicit hostnames in production.")
 

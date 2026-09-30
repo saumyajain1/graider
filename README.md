@@ -9,7 +9,7 @@ Graider is a personal project for AI-assisted grading. Teachers create assignmen
 - Add student submissions individually or import a CSV; review scores and feedback before finalizing.
 - Keep original uploads private, restrict access to their teacher, and enforce upload and AI token limits.
 
-Built with session authentication and CSRF protection, persistent file storage, and CI covering 83 backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
+Built with session authentication and CSRF protection, persistent file storage, and CI covering 85 backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
 
 ## Tech stack
 
@@ -19,12 +19,55 @@ Built with session authentication and CSRF protection, persistent file storage, 
 - **AI:** OpenAI SDK; GPT-6 Luna by default, configurable per task.
 - **Hosting:** one Docker web service on Render for the frontend and API.
 
-## Run locally
+## Run locally with Docker
 
-Use a repository checkout for development: it provides automatic frontend reloads and needs no cloud database or Docker. Requires Python 3.11 and Node.js 24.
+Requires Docker Desktop. The published image includes the frontend and backend; no Python, Node.js, or repository checkout is needed.
 
 ```bash
-git clone https://github.com/saumyajain1/graider.git
+mkdir graider-demo
+cd graider-demo
+curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/codex/graider-deployment/compose.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/codex/graider-deployment/.env.example -o .env
+```
+
+Set a unique `DJANGO_SECRET_KEY` in `.env`; add `OPENAI_API_KEY` for AI features, or leave it empty for manual use. Then run:
+
+```bash
+docker compose up -d
+```
+
+Open [localhost:8000](http://localhost:8000). SQLite data and uploads persist in Docker volumes. `docker compose down` stops the app; adding `--volumes` deletes that local data. To update, run `docker compose pull` followed by `docker compose up -d`.
+
+The `preview` image tracks the deployment branch. After the PR merges, `latest` is published from `main`; set `GRAIDER_IMAGE_TAG=latest` in `.env` to use it. Images support Intel/AMD and Apple Silicon.
+
+## Deploy on Render
+
+1. Use the published image; GitHub CI builds it only after all checks pass.
+2. Create a Neon PostgreSQL database and a private `uploads` bucket on the same branch in AWS US East 2 (Ohio).
+3. In Render, create a **Blueprint** from `codex/graider-deployment` using [render.yaml](render.yaml). It defines a free web service in Ohio that pulls the published image.
+4. Supply the environment values below and deploy.
+
+| Setting                                                                      | Production value                                                               |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `DJANGO_DEBUG`                                                               | `false`                                                                        |
+| `DJANGO_SECRET_KEY`                                                          | A unique random secret of at least 50 characters                               |
+| `DJANGO_ALLOWED_HOSTS`                                                       | Empty on Render (its assigned hostname is detected); list any custom hostnames |
+| `DATABASE_URL`                                                               | Neon PostgreSQL connection URL, including `sslmode=require`                    |
+| `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`          | Neon Object Storage endpoint and credentials                                   |
+| `AWS_REGION`, `NEON_STORAGE_BUCKET`                                          | `us-east-2`, `uploads`                                                         |
+| `OPENAI_API_KEY`                                                             | A dedicated OpenAI project key                                                 |
+| `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for this same-origin deployment                                          |
+
+Enter credentials in Render's environment settings; do not upload `.env`. Set a monthly spend cap for the OpenAI project. [.env.example](.env.example) lists optional model, reasoning, upload, token quota, and server overrides.
+
+The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. Redeploy manually on Render after publishing a new image; switch its image tag to `latest` after merging the PR. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
+
+## Develop from source
+
+For live reload and code changes, use Python 3.11 and Node.js 24:
+
+```bash
+git clone --branch codex/graider-deployment https://github.com/saumyajain1/graider.git
 cd graider
 cp .env.example .env
 python3.11 -m venv .venv
@@ -33,48 +76,16 @@ python -m pip install -r backend/requirements.txt -c backend/requirements.lock
 npm ci --prefix frontend
 ```
 
-In `.env`, set `DJANGO_SECRET_KEY` to a unique value and add `OPENAI_API_KEY` to use AI features. Keep `DJANGO_DEBUG="true"`, `DATABASE_URL=""`, and the three storage endpoint/credential variables empty for local SQLite and file storage. All settings and defaults are in [.env.example](.env.example).
-
-Initialize the database and start the backend:
+Configure the two keys in `.env` as above; keep the database URL and storage credentials empty for local SQLite/files. Start the backend:
 
 ```bash
 python backend/manage.py migrate
 python backend/manage.py runserver 127.0.0.1:8000
 ```
 
-In a second terminal, from the repository root:
+In another terminal, run `npm run dev --prefix frontend` and open [localhost:5173](http://localhost:5173).
 
-```bash
-npm run dev --prefix frontend
-```
-
-Open [localhost:5173](http://localhost:5173). Manual editing works without an OpenAI key.
-
-## Deploy on Render
-
-1. Push the repository to GitHub.
-2. Create a Neon PostgreSQL database and a private `uploads` bucket on the same branch in AWS US East 2 (Ohio).
-3. In Render, create a **Blueprint** from the repository using [render.yaml](render.yaml). It defines a free Docker web service in Ohio.
-4. Supply the environment values below and deploy.
-
-| Setting                                                                      | Production value                                            |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `DJANGO_DEBUG`                                                               | `false`                                                     |
-| `DJANGO_SECRET_KEY`                                                          | A unique random secret of at least 50 characters            |
-| `DJANGO_ALLOWED_HOSTS`                                                       | Your Render hostname, without `https://` or a path          |
-| `DATABASE_URL`                                                               | Neon PostgreSQL connection URL, including `sslmode=require` |
-| `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`          | Neon Object Storage endpoint and credentials                |
-| `AWS_REGION`, `NEON_STORAGE_BUCKET`                                          | `us-east-2`, `uploads`                                      |
-| `OPENAI_API_KEY`                                                             | A dedicated OpenAI project key                              |
-| `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for this same-origin deployment                       |
-
-Enter credentials in Render's environment settings; do not upload `.env`. Set a monthly spend cap for the OpenAI project. [.env.example](.env.example) lists optional model, reasoning, upload, token quota, and server overrides.
-
-Render builds React and collects static files through the Dockerfile. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
-
-## Development checks
-
-Install the quality tools once:
+Install the quality tools:
 
 ```bash
 python -m pip install -r backend/requirements-dev.txt
@@ -86,8 +97,9 @@ Run `npm run check` for linting and formatting checks, or `npm run format` to ap
 Run backend tests without connecting to cloud services:
 
 ```bash
+cd backend
 DATABASE_URL= AWS_ENDPOINT_URL_S3= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= \
-  OPENAI_API_KEY= python backend/manage.py test
+  OPENAI_API_KEY= python manage.py test
 ```
 
 CSV imports require `student_name` and `response_text` (or `raw_response_text`); `student_identifier` (or `student_id`) is optional.

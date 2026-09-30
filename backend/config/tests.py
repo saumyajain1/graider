@@ -17,6 +17,7 @@ class ProductionSettingsTests(SimpleTestCase):
             DJANGO_DEBUG="false",
             DJANGO_SECRET_KEY="test-secret-" + "a1B2c3D4e5" * 5,
             DJANGO_ALLOWED_HOSTS="graider.onrender.com",
+            RENDER_EXTERNAL_HOSTNAME="",
             DATABASE_URL="postgresql://user:password@db.example:5432/graider?sslmode=require",
             FRONTEND_URL="",
             DJANGO_CORS_ALLOWED_ORIGINS="",
@@ -94,6 +95,26 @@ class ProductionSettingsTests(SimpleTestCase):
         result = self.load_settings(DJANGO_DEBUG="true", DATABASE_URL="")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["engine"], "django.db.backends.sqlite3")
+
+    def test_render_hostname_allows_initial_deployment_without_a_manual_host(self):
+        result = self.load_settings(
+            DJANGO_ALLOWED_HOSTS="", RENDER_EXTERNAL_HOSTNAME="graider-test.onrender.com"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["hosts"], ["graider-test.onrender.com"])
+
+    def test_render_hostname_keeps_custom_hosts_and_rejects_wildcard(self):
+        result = self.load_settings(
+            DJANGO_ALLOWED_HOSTS="example.com", RENDER_EXTERNAL_HOSTNAME="graider-test.onrender.com"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["hosts"], ["example.com", "graider-test.onrender.com"]
+        )
+        result = self.load_settings(
+            DJANGO_ALLOWED_HOSTS="*", RENDER_EXTERNAL_HOSTNAME="graider-test.onrender.com"
+        )
+        self.assertNotEqual(result.returncode, 0)
 
     def test_invalid_debug_value_fails(self):
         result = self.load_settings(DJANGO_DEBUG="perhaps")

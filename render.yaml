@@ -1,21 +1,20 @@
 services:
   - type: web
     name: graider
-    runtime: docker
+    runtime: image
     plan: free
     region: ohio
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    image:
+      url: ghcr.io/saumyajain1/graider:preview
     healthCheckPath: /health/
     maxShutdownDelaySeconds: 120
-    autoDeployTrigger: checksPass
     envVars:
       - key: DJANGO_DEBUG
         value: 'false'
       - key: DJANGO_SECRET_KEY
         sync: false
       - key: DJANGO_ALLOWED_HOSTS
-        sync: false
+        value: ''
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_URL
