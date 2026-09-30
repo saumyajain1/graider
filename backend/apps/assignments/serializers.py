@@ -1,4 +1,11 @@
 from rest_framework import serializers
+from django.conf import settings
+from django.db import transaction
+
+from apps.uploads import (
+    check_file_size, check_text_length, delete_name_after_commit,
+    file_api_url, original_name, stored_upload,
+)
 
 from .models import Assignment, QuestionPart
 from .services import extract_text_from_uploaded_file, is_supported_text_upload
@@ -58,6 +65,13 @@ class AssignmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"source_file": "Only .txt and .pdf files are supported."}
             )
+        if uploaded_file is not None:
+            check_file_size(uploaded_file, settings.GRAIDER_MAX_UPLOAD_BYTES)
+        if "raw_assignment_text" in attrs:
+            check_text_length(
+                attrs["raw_assignment_text"], settings.GRAIDER_MAX_ASSIGNMENT_CHARS,
+                "Assignment text",
+            )
 
         if self.instance is None:
             raw_text = attrs.get("raw_assignment_text", "").strip()
@@ -92,14 +106,17 @@ class AssignmentSerializer(serializers.ModelSerializer):
             validated_data["raw_assignment_text"] = extracted_text
         validated_data["ingestion_notes"] = note
 
-        assignment = Assignment.objects.create(
+        assignment = Assignment(
             teacher=self.context["request"].user,
             **validated_data,
         )
-
         if uploaded_file is not None:
-            assignment.source_file = uploaded_file
-            assignment.save(update_fields=("source_file", "updated_at"))
+            assignment.source_original_filename = original_name(uploaded_file)
+            with stored_upload(assignment.source_file, uploaded_file):
+                with transaction.atomic():
+                    assignment.save()
+        else:
+            assignment.save()
 
         return assignment
 
@@ -110,7 +127,6 @@ class AssignmentSerializer(serializers.ModelSerializer):
 
         if uploaded_file is not None:
             extracted_text, note = extract_text_from_uploaded_file(uploaded_file)
-            instance.source_file = uploaded_file
             if not raw_text_provided and extracted_text:
                 instance.raw_assignment_text = extracted_text
             if not raw_text_provided and not extracted_text:
@@ -126,14 +142,23 @@ class AssignmentSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
 
         instance.ingestion_notes = note
-        instance.save()
+        if uploaded_file is not None:
+            old_storage = instance.source_file.storage
+            old_name = instance.source_file.name
+            instance.source_original_filename = original_name(uploaded_file)
+            with stored_upload(instance.source_file, uploaded_file):
+                with transaction.atomic():
+                    instance.save()
+                    delete_name_after_commit(old_storage, old_name)
+        else:
+            instance.save()
         return instance
 
     def get_source_file_url(self, obj):
-        return obj.source_file.url if obj.source_file else None
+        return file_api_url("assignment-source-file", assignment_id=obj.id) if obj.source_file else None
 
     def get_source_filename(self, obj):
-        return obj.source_file.name.split("/")[-1] if obj.source_file else None
+        return (obj.source_original_filename or obj.source_file.name.split("/")[-1]) if obj.source_file else None
 
     def get_status(self, obj):
         return obj.workflow_status

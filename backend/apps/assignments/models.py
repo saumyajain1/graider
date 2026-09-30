@@ -1,14 +1,11 @@
-from pathlib import Path
-
 from django.conf import settings
 from django.db import models
-from django.utils import timezone
+
+from apps.uploads import object_key
 
 
 def assignment_source_upload_to(instance, filename):
-    safe_name = Path(filename).name
-    timestamp = timezone.now().strftime("%Y/%m/%d")
-    return f"assignments/{instance.teacher_id}/{timestamp}/{safe_name}"
+    return object_key(f"assignments/{instance.teacher_id}", filename)
 
 
 class Assignment(models.Model):
@@ -35,6 +32,7 @@ class Assignment(models.Model):
         blank=True,
         null=True,
     )
+    source_original_filename = models.CharField(max_length=255, blank=True)
     ingestion_notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

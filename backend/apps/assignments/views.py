@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from .models import Assignment, QuestionPart
 from .serializers import AssignmentSerializer, QuestionPartSerializer, build_part_key
+from apps.uploads import delete_upload_after_commit, private_file_response
 from apps.grading.services import (
     LLMConfigurationError,
     LLMGenerationError,
@@ -81,8 +82,21 @@ class AssignmentDetailView(TeacherScopedView):
 
     def delete(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        assignment.delete()
+        with transaction.atomic():
+            delete_upload_after_commit(assignment.source_file)
+            for submission in assignment.submissions.all():
+                delete_upload_after_commit(submission.response_file)
+            for csv_import in assignment.csv_imports.all():
+                delete_upload_after_commit(csv_import.source_file)
+            assignment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AssignmentSourceFileView(TeacherScopedView):
+    def get(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        filename = assignment.source_original_filename or assignment.source_file.name.rsplit("/", 1)[-1]
+        return private_file_response(assignment.source_file, filename)
 
 
 class QuestionListCreateView(TeacherScopedView):

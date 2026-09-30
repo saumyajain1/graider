@@ -1,12 +1,14 @@
 from rest_framework import serializers
 
 from apps.assignments.models import QuestionPart
+from apps.uploads import file_api_url
 
 from .models import (
     GradingResult,
     ReferenceAnswer,
     RubricCriterion,
     StudentSubmission,
+    SubmissionImport,
     SubmissionAnswerPart,
 )
 
@@ -145,10 +147,23 @@ class StudentSubmissionSerializer(serializers.ModelSerializer):
         )
 
     def get_response_file_url(self, obj):
-        return obj.response_file.url if obj.response_file else None
+        return file_api_url("submission-response-file", submission_id=obj.id) if obj.response_file else None
 
     def get_response_filename(self, obj):
-        return obj.response_file.name.split("/")[-1] if obj.response_file else None
+        return (obj.response_original_filename or obj.response_file.name.split("/")[-1]) if obj.response_file else None
+
+
+class SubmissionImportSerializer(serializers.ModelSerializer):
+    source_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SubmissionImport
+        fields = ("id", "original_filename", "source_file_url", "row_count", "created_at")
+
+    def get_source_file_url(self, obj):
+        return file_api_url(
+            "submission-import-file", assignment_id=obj.assignment_id, import_id=obj.id
+        )
 
 
 class SubmissionCreateSerializer(serializers.Serializer):

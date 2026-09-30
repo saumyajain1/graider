@@ -24,6 +24,16 @@ def _csv_env(name, default=""):
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
+def _positive_int_env(name, default):
+    try:
+        value = int(os.getenv(name, default))
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"{name} must be a positive integer.") from exc
+    if value <= 0:
+        raise ImproperlyConfigured(f"{name} must be a positive integer.")
+    return value
+
+
 DEBUG = _boolean_env("DJANGO_DEBUG")
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
@@ -133,6 +143,53 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+GRAIDER_MAX_UPLOAD_BYTES = _positive_int_env("GRAIDER_MAX_UPLOAD_BYTES", 10 * 1024 * 1024)
+GRAIDER_MAX_PDF_PAGES = _positive_int_env("GRAIDER_MAX_PDF_PAGES", 30)
+GRAIDER_MAX_ASSIGNMENT_CHARS = _positive_int_env("GRAIDER_MAX_ASSIGNMENT_CHARS", 100_000)
+GRAIDER_MAX_RESPONSE_CHARS = _positive_int_env("GRAIDER_MAX_RESPONSE_CHARS", 50_000)
+GRAIDER_MAX_CSV_BYTES = _positive_int_env("GRAIDER_MAX_CSV_BYTES", 2 * 1024 * 1024)
+GRAIDER_MAX_CSV_ROWS = _positive_int_env("GRAIDER_MAX_CSV_ROWS", 100)
+GRAIDER_MAX_SUBMISSIONS_PER_ASSIGNMENT = _positive_int_env(
+    "GRAIDER_MAX_SUBMISSIONS_PER_ASSIGNMENT", 100
+)
+DATA_UPLOAD_MAX_MEMORY_SIZE = GRAIDER_MAX_UPLOAD_BYTES
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+
+_storage_endpoint = os.getenv("AWS_ENDPOINT_URL_S3", "")
+_storage_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+_storage_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+_storage_configured = any((_storage_endpoint, _storage_access_key, _storage_secret_key))
+if _storage_configured and not all(
+    (_storage_endpoint, _storage_access_key, _storage_secret_key)
+):
+    raise ImproperlyConfigured(
+        "AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY must be set together."
+    )
+if not DEBUG and not _storage_configured:
+    raise ImproperlyConfigured("Neon Object Storage credentials are required in production.")
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+if _storage_configured:
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "access_key": _storage_access_key,
+            "secret_key": _storage_secret_key,
+            "bucket_name": os.getenv("NEON_STORAGE_BUCKET", "uploads"),
+            "endpoint_url": _storage_endpoint,
+            "region_name": os.getenv("AWS_REGION", "us-east-2"),
+            "addressing_style": "path",
+            "signature_version": "s3v4",
+            "default_acl": None,
+            "querystring_auth": True,
+            "querystring_expire": 60,
+            "file_overwrite": False,
+        },
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.User"

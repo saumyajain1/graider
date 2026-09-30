@@ -116,7 +116,10 @@ export function AssignmentOverviewPage() {
 
           {assignment.source_filename ? (
             <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Uploaded file: {assignment.source_filename}
+              Uploaded file:{' '}
+              <a href={assignment.source_file_url ?? undefined} className="font-medium text-fuchsia-700 underline">
+                {assignment.source_filename}
+              </a>
             </div>
           ) : null}
         </div>

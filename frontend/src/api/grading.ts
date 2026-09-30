@@ -52,6 +52,14 @@ export type StudentSubmission = {
   updated_at: string
 }
 
+export type SubmissionImport = {
+  id: number
+  original_filename: string
+  source_file_url: string
+  row_count: number
+  created_at: string
+}
+
 export type SubmissionAnswerPart = {
   id: number
   question_part_id: number
@@ -180,6 +188,10 @@ export function generateRubric(
 
 export function listSubmissions(assignmentId: string) {
   return apiRequest<StudentSubmission[]>(`/api/assignments/${assignmentId}/submissions`)
+}
+
+export function listSubmissionImports(assignmentId: string) {
+  return apiRequest<SubmissionImport[]>(`/api/assignments/${assignmentId}/imports`)
 }
 
 export function createSubmission(

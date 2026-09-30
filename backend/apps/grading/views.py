@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
@@ -8,13 +9,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.assignments.models import Assignment
-from apps.assignments.services import extract_text_from_uploaded_file
+from apps.assignments.services import extract_text_from_uploaded_file, is_supported_text_upload
+from apps.uploads import (
+    check_file_size, check_submission_capacity, check_text_length,
+    original_name, private_file_response, stored_upload,
+)
 
 from .models import (
     GradingResult,
     ReferenceAnswer,
     RubricCriterion,
     StudentSubmission,
+    SubmissionImport,
 )
 from .serializers import (
     GradingResultSerializer,
@@ -27,6 +33,7 @@ from .serializers import (
     RubricCriterionWriteSerializer,
     RubricQuestionSerializer,
     StudentSubmissionSerializer,
+    SubmissionImportSerializer,
     SubmissionCreateSerializer,
     SubmissionGradingSerializer,
     build_reference_answer_item,
@@ -41,7 +48,7 @@ from .services import (
 from .services.submission_io import (
     CsvImportError,
     build_assignment_results_csv_response,
-    import_submissions_from_csv,
+    parse_submissions_csv,
 )
 from .services.submission_workflow import (
     SubmissionNotReadyError,
@@ -323,19 +330,25 @@ class SubmissionListCreateView(TeacherScopedArtifactView):
         ingestion_notes = ""
 
         if uploaded_file is not None:
-            extracted_text, ingestion_notes = extract_text_from_uploaded_file(uploaded_file)
+            if not is_supported_text_upload(uploaded_file):
+                return Response({"detail": "Only .txt and .pdf files are supported."}, status=400)
+            check_file_size(uploaded_file, settings.GRAIDER_MAX_UPLOAD_BYTES)
+            extracted_text, ingestion_notes = extract_text_from_uploaded_file(
+                uploaded_file, max_chars=settings.GRAIDER_MAX_RESPONSE_CHARS
+            )
             if not raw_response_text.strip():
                 raw_response_text = extracted_text
             if not raw_response_text.strip():
                 detail = ingestion_notes or "No extractable text was found in the uploaded file."
                 return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
-        submission = StudentSubmission.objects.create(
+        check_text_length(raw_response_text, settings.GRAIDER_MAX_RESPONSE_CHARS, "Response text")
+        submission = StudentSubmission(
             assignment=assignment,
             student_name=serializer.validated_data["student_name"],
             student_identifier=serializer.validated_data.get("student_identifier", ""),
             raw_response_text=raw_response_text,
-            response_file=uploaded_file,
+            response_original_filename=original_name(uploaded_file) if uploaded_file else "",
             ingestion_notes=ingestion_notes,
             upload_source=(
                 StudentSubmission.UploadSource.FILE
@@ -343,6 +356,17 @@ class SubmissionListCreateView(TeacherScopedArtifactView):
                 else StudentSubmission.UploadSource.MANUAL
             ),
         )
+        if uploaded_file is not None:
+            with stored_upload(submission.response_file, uploaded_file):
+                with transaction.atomic():
+                    Assignment.objects.select_for_update().get(pk=assignment.pk)
+                    check_submission_capacity(assignment)
+                    submission.save()
+        else:
+            with transaction.atomic():
+                Assignment.objects.select_for_update().get(pk=assignment.pk)
+                check_submission_capacity(assignment)
+                submission.save()
         return Response(
             StudentSubmissionSerializer(submission).data,
             status=status.HTTP_201_CREATED,
@@ -362,17 +386,49 @@ class SubmissionImportCsvView(TeacherScopedArtifactView):
             )
 
         try:
-            created = import_submissions_from_csv(assignment, uploaded_file)
+            submissions = parse_submissions_csv(assignment, uploaded_file)
         except CsvImportError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        csv_import = SubmissionImport(
+            assignment=assignment,
+            original_filename=original_name(uploaded_file),
+            row_count=len(submissions),
+        )
+        with stored_upload(csv_import.source_file, uploaded_file):
+            with transaction.atomic():
+                Assignment.objects.select_for_update().get(pk=assignment.pk)
+                check_submission_capacity(assignment, len(submissions))
+                csv_import.save()
+                created = StudentSubmission.objects.bulk_create(submissions)
+
         return Response(StudentSubmissionSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
+
+
+class SubmissionImportListView(TeacherScopedArtifactView):
+    def get(self, request, assignment_id):
+        assignment = self.get_assignment(assignment_id)
+        return Response(SubmissionImportSerializer(assignment.csv_imports.all(), many=True).data)
+
+
+class SubmissionImportFileView(TeacherScopedArtifactView):
+    def get(self, request, assignment_id, import_id):
+        assignment = self.get_assignment(assignment_id)
+        csv_import = get_object_or_404(assignment.csv_imports, pk=import_id)
+        return private_file_response(csv_import.source_file, csv_import.original_filename)
 
 
 class SubmissionDetailView(TeacherScopedArtifactView):
     def get(self, request, submission_id):
         submission = self.get_submission(submission_id)
         return Response(StudentSubmissionSerializer(submission).data)
+
+
+class SubmissionResponseFileView(TeacherScopedArtifactView):
+    def get(self, request, submission_id):
+        submission = self.get_submission(submission_id)
+        filename = submission.response_original_filename or submission.response_file.name.rsplit("/", 1)[-1]
+        return private_file_response(submission.response_file, filename)
 
 
 class SubmissionGradeView(TeacherScopedArtifactView):

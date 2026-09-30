@@ -1,15 +1,15 @@
-from pathlib import Path
-
 from django.db import models
-from django.utils import timezone
 
 from apps.assignments.models import QuestionPart
+from apps.uploads import object_key
 
 
 def submission_source_upload_to(instance, filename):
-    safe_name = Path(filename).name
-    timestamp = timezone.now().strftime("%Y/%m/%d")
-    return f"submissions/{instance.assignment.teacher_id}/{instance.assignment_id}/{timestamp}/{safe_name}"
+    return object_key(f"submissions/{instance.assignment.teacher_id}/{instance.assignment_id}", filename)
+
+
+def csv_source_upload_to(instance, filename):
+    return object_key(f"imports/{instance.assignment.teacher_id}/{instance.assignment_id}", filename)
 
 
 class ReferenceAnswer(models.Model):
@@ -87,6 +87,7 @@ class StudentSubmission(models.Model):
         blank=True,
         null=True,
     )
+    response_original_filename = models.CharField(max_length=255, blank=True)
     ingestion_notes = models.TextField(blank=True)
     upload_source = models.CharField(
         max_length=20,
@@ -114,6 +115,19 @@ class StudentSubmission(models.Model):
 
     def __str__(self):
         return f"{self.assignment_id}: {self.student_name}"
+
+
+class SubmissionImport(models.Model):
+    assignment = models.ForeignKey(
+        "assignments.Assignment", on_delete=models.CASCADE, related_name="csv_imports"
+    )
+    source_file = models.FileField(upload_to=csv_source_upload_to)
+    original_filename = models.CharField(max_length=255)
+    row_count = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
 
 
 class SubmissionAnswerPart(models.Model):

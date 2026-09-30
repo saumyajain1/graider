@@ -9,6 +9,7 @@ import {
   gradeAllSubmissions,
   gradeSubmission,
   importSubmissionsCsv,
+  listSubmissionImports,
   listSubmissions,
   type StudentSubmission,
 } from '../api/grading'
@@ -63,8 +64,15 @@ export function AssignmentSubmissionsPage() {
     enabled: Boolean(assignmentId),
   })
 
+  const importsQuery = useQuery({
+    queryKey: ['assignments', assignmentId, 'imports'],
+    queryFn: () => listSubmissionImports(assignmentId!),
+    enabled: Boolean(assignmentId),
+  })
+
   const refreshAssignmentData = async () => {
     await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'submissions'] })
+    await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'imports'] })
     await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
     await queryClient.invalidateQueries({ queryKey: ['assignments'] })
   }
@@ -354,6 +362,21 @@ export function AssignmentSubmissionsPage() {
           >
             {importMutation.isPending ? 'Importing...' : 'Import submissions'}
           </button>
+          {(importsQuery.data?.length ?? 0) > 0 ? (
+            <div className="mt-6 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold text-slate-800">Previous imports</h3>
+              <ul className="mt-2 space-y-2 text-sm">
+                {importsQuery.data?.map((item) => (
+                  <li key={item.id}>
+                    <a href={item.source_file_url} className="text-fuchsia-700 underline">
+                      {item.original_filename}
+                    </a>{' '}
+                    <span className="text-slate-500">({item.row_count} rows)</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </form>
       </section>
 
@@ -423,7 +446,10 @@ export function AssignmentSubmissionsPage() {
 
                   {submission.response_filename ? (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                      Source file: {submission.response_filename}
+                      Source file:{' '}
+                      <a href={submission.response_file_url ?? undefined} className="text-fuchsia-700 underline">
+                        {submission.response_filename}
+                      </a>
                     </div>
                   ) : null}
 

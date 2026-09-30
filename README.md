@@ -12,7 +12,7 @@ Graider is a local-first MVP for AI-assisted grading. It lets a teacher:
 
 ## Stack
 
-- `backend/`: Django + Django REST Framework + SQLite
+- `backend/`: Django + Django REST Framework + SQLite locally or Neon PostgreSQL in production
 - `frontend/`: React + Vite + Tailwind
 - OpenAI models: `gpt-5.4-mini` for all current AI tasks
 
@@ -66,6 +66,12 @@ The backend reads a PostgreSQL `DATABASE_URL` when supplied. A populated local `
 For the planned same-origin Render deployment, leave `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, and `DJANGO_CSRF_TRUSTED_ORIGINS` empty. Set the latter two to comma-separated full origins only if a separate frontend needs access. Production enables HTTPS-aware proxy handling and secure session/CSRF cookies.
 
 Apply Django migrations to a fresh PostgreSQL database before use. The existing local SQLite data is intentionally not copied.
+
+## Private upload storage (Step 2)
+
+Production requires a private Neon Object Storage bucket. Create or use the `uploads` bucket on the same Neon branch as `DATABASE_URL`, then set `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and `NEON_STORAGE_BUCKET` in Render. For local testing against Neon, put the same values in the ignored `.env`; leave the three credential/endpoint values empty to use local file storage while `DJANGO_DEBUG=true`. Do not commit credentials. The backend rejects production startup if object storage is not configured.
+
+Original assignment, submission, and CSV files are stored privately. Graider returns authenticated download paths; Neon download links are signed for 60 seconds after the requesting teacher's ownership is checked. Upload limits are configurable through the `GRAIDER_MAX_*` settings in `.env.example`. Apply the new Django migrations before enabling uploads in production.
 
 ## CSV format
 
