@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from apps.assignments.models import QuestionPart
@@ -196,3 +197,33 @@ class GradingResult(models.Model):
                 name="unique_grading_result_per_submission_question",
             )
         ]
+
+
+class LLMQuotaLock(models.Model):
+    """Single PostgreSQL row serializing global and per-user quota reservations."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+
+
+class LLMUsage(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        UNCERTAIN = "uncertain", "Uncertain"
+        UNMETERED = "unmetered", "Succeeded without usage data"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="llm_usages")
+    operation = models.CharField(max_length=32)
+    model = models.CharField(max_length=100)
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    total_tokens = models.PositiveIntegerField(default=0)
+    reserved_tokens = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    provider_request_id = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [models.Index(fields=("user", "created_at"), name="llm_usage_user_created_idx")]

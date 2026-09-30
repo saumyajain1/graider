@@ -15,8 +15,8 @@ from .schemas import (
     GeneratedRubricSchema,
 )
 
-QUESTION_MODEL = os.getenv("OPENAI_QUESTION_MODEL", "gpt-5.4-mini")
-ARTIFACT_MODEL = os.getenv("OPENAI_ARTIFACT_MODEL", "gpt-5.4-mini")
+QUESTION_MODEL = os.getenv("OPENAI_QUESTION_MODEL", "gpt-6-luna")
+ARTIFACT_MODEL = os.getenv("OPENAI_ARTIFACT_MODEL", "gpt-6-luna")
 
 FOCUS_HINT_RE = re.compile(r"\b(?:q|question)\s*[-_ ]?(?P<number>\d{1,2})\b", re.IGNORECASE)
 TOP_LEVEL_SECTION_RE = re.compile(
@@ -351,12 +351,13 @@ def repair_generated_question_parts(
     if not question_set.parts or not question_set_needs_repair(question_set):
         return question_set
 
-    service = OpenAIChatService()
     try:
+        service = OpenAIChatService()
         repaired = service.parse(
+            user=assignment.teacher,
+            operation="question_repair",
             model=QUESTION_MODEL,
             response_format=GeneratedQuestionSetSchema,
-            reasoning_effort="medium",
             system_prompt=dedent(
                 """
                 You are cleaning already-segmented assignment question parts extracted from a PDF.
@@ -481,9 +482,10 @@ def generate_question_parts(assignment: Assignment):
     normalized_text = normalize_assignment_text(assignment.raw_assignment_text)
 
     return service.parse(
+        user=assignment.teacher,
+        operation="question_generation",
         model=QUESTION_MODEL,
         response_format=GeneratedQuestionSetSchema,
-        reasoning_effort="high",
         system_prompt=dedent(
             """
             You convert assignment text into structured grading question parts.
@@ -532,6 +534,8 @@ def generate_reference_answer(assignment: Assignment, question_part: QuestionPar
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
     return service.parse(
+        user=assignment.teacher,
+        operation="reference_answer",
         model=ARTIFACT_MODEL,
         response_format=GeneratedReferenceAnswerSchema,
         system_prompt=dedent(
@@ -564,6 +568,8 @@ def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text:
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
     return service.parse(
+        user=question_part.assignment.teacher,
+        operation="rubric_generation",
         model=ARTIFACT_MODEL,
         response_format=GeneratedRubricSchema,
         system_prompt=dedent(

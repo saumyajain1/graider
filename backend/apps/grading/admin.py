@@ -2,11 +2,28 @@ from django.contrib import admin
 
 from .models import (
     GradingResult,
+    LLMUsage,
     ReferenceAnswer,
     RubricCriterion,
     StudentSubmission,
     SubmissionAnswerPart,
 )
+
+
+@admin.register(LLMUsage)
+class LLMUsageAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "user", "operation", "model", "status", "total_tokens", "reserved_tokens")
+    list_filter = ("operation", "status", "model")
+    search_fields = ("user__email", "provider_request_id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ReferenceAnswer)

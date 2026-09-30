@@ -45,13 +45,15 @@ from .services import (
     generate_reference_answer,
     generate_rubric_criteria,
 )
-from .services.openai_client import public_llm_error
+from .services.openai_client import LLMSpendLimitError, public_llm_error
+from .services.usage import LLMQuotaExceeded
 from .services.submission_io import (
     CsvImportError,
     build_assignment_results_csv_response,
     parse_submissions_csv,
 )
 from .services.submission_workflow import (
+    SubmissionGradingInProgressError,
     SubmissionNotReadyError,
     finalize_submission,
     question_queryset_for_assignment,
@@ -128,9 +130,12 @@ class TeacherScopedArtifactView(APIView):
         )
 
     def handle_llm_error(self, exc):
-        if isinstance(exc, LLMConfigurationError):
+        if isinstance(exc, (LLMConfigurationError, LLMSpendLimitError)):
             return Response({"detail": public_llm_error(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({"detail": public_llm_error(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    def handle_quota_error(self, exc):
+        return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
 class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
@@ -200,6 +205,8 @@ class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
                     reference_answer.save()
 
                 items.append(build_reference_answer_item(question_part))
+        except LLMQuotaExceeded as exc:
+            return self.handle_quota_error(exc)
         except (LLMConfigurationError, LLMGenerationError) as exc:
             return self.handle_llm_error(exc)
 
@@ -258,42 +265,47 @@ class RubricGenerateView(TeacherScopedArtifactView):
         if target_question_id is not None:
             questions = questions.filter(id=target_question_id)
 
-        if not questions.exists():
+        questions = list(questions)
+        if not questions:
             return Response(
                 {"detail": "No target question parts were found for rubric generation."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        generated_questions = []
-        try:
-            with transaction.atomic():
-                for question_part in questions:
-                    try:
-                        reference_answer = question_part.reference_answer
-                    except ReferenceAnswer.DoesNotExist:
-                        return Response(
-                            {
-                                "detail": (
-                                    "Generate or create a reference answer before generating rubric criteria."
-                                )
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
+        references = []
+        for question_part in questions:
+            try:
+                references.append((question_part, question_part.reference_answer))
+            except ReferenceAnswer.DoesNotExist:
+                return Response(
+                    {"detail": "Generate or create a reference answer before generating rubric criteria."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-                    parsed = generate_rubric_criteria(question_part, reference_answer.answer_text)
-                    question_part.rubric_criteria.all().delete()
-                    for index, criterion in enumerate(parsed.criteria):
-                        RubricCriterion.objects.create(
-                            question_part=question_part,
-                            title=criterion.title,
-                            description=criterion.description,
-                            max_points=Decimal(str(criterion.max_points)),
-                            display_order=index,
-                            created_by_ai=True,
-                        )
-                    generated_questions.append(build_rubric_question_item(question_part))
+        prepared = []
+        try:
+            for question_part, reference_answer in references:
+                parsed = generate_rubric_criteria(question_part, reference_answer.answer_text)
+                prepared.append((question_part, parsed))
+        except LLMQuotaExceeded as exc:
+            return self.handle_quota_error(exc)
         except (LLMConfigurationError, LLMGenerationError) as exc:
             return self.handle_llm_error(exc)
+
+        generated_questions = []
+        with transaction.atomic():
+            for question_part, parsed in prepared:
+                question_part.rubric_criteria.all().delete()
+                for index, criterion in enumerate(parsed.criteria):
+                    RubricCriterion.objects.create(
+                        question_part=question_part,
+                        title=criterion.title,
+                        description=criterion.description,
+                        max_points=Decimal(str(criterion.max_points)),
+                        display_order=index,
+                        created_by_ai=True,
+                    )
+                generated_questions.append(build_rubric_question_item(question_part))
 
         return Response(RubricQuestionSerializer(generated_questions, many=True).data)
 
@@ -439,6 +451,10 @@ class SubmissionGradeView(TeacherScopedArtifactView):
             submission = run_grading_pipeline(submission)
         except SubmissionNotReadyError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SubmissionGradingInProgressError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        except LLMQuotaExceeded as exc:
+            return self.handle_quota_error(exc)
         except (LLMConfigurationError, LLMGenerationError) as exc:
             return self.handle_llm_error(exc)
 
@@ -454,6 +470,16 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
                 {"detail": "No submissions are available to grade."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if len(submissions) > settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS:
+            return Response(
+                {"detail": f"Grade at most {settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS} submissions at once."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if question_queryset_for_assignment(assignment).count() > settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS:
+            return Response(
+                {"detail": f"Grade-all supports at most {settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS} questions."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         graded = 0
         failed = 0
@@ -463,7 +489,13 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
                 graded += 1
             except SubmissionNotReadyError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-            except (LLMConfigurationError, LLMGenerationError):
+            except SubmissionGradingInProgressError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+            except LLMQuotaExceeded as exc:
+                return self.handle_quota_error(exc)
+            except (LLMConfigurationError, LLMSpendLimitError) as exc:
+                return self.handle_llm_error(exc)
+            except LLMGenerationError:
                 failed += 1
 
         return Response(

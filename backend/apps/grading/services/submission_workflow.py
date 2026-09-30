@@ -1,6 +1,8 @@
 from decimal import Decimal
+from datetime import timedelta
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -9,12 +11,17 @@ from apps.assignments.models import QuestionPart
 from ..models import GradingResult, ReferenceAnswer, StudentSubmission, SubmissionAnswerPart
 from .grading_pipeline import grade_question_part, map_submission_answers
 from .openai_client import LLMConfigurationError, LLMGenerationError, public_llm_error
+from .usage import LLMQuotaExceeded
 
 
 logger = logging.getLogger(__name__)
 
 
 class SubmissionNotReadyError(ValueError):
+    pass
+
+
+class SubmissionGradingInProgressError(Exception):
     pass
 
 
@@ -71,10 +78,27 @@ def validate_submission_ready_for_grading(submission):
 
 def run_grading_pipeline(submission):
     questions = validate_submission_ready_for_grading(submission)
-    original_status = submission.grading_status
-    submission.grading_status = StudentSubmission.GradingStatus.GRADING
-    submission.last_error = ""
-    submission.save(update_fields=("grading_status", "last_error", "updated_at"))
+    now = timezone.now()
+    with transaction.atomic():
+        submission = StudentSubmission.objects.select_for_update().get(pk=submission.pk)
+        if (
+            submission.grading_status in (
+                StudentSubmission.GradingStatus.GRADED,
+                StudentSubmission.GradingStatus.REVIEWED,
+                StudentSubmission.GradingStatus.FINALIZED,
+            )
+            and submission.updated_at >= now - timedelta(seconds=settings.GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS)
+        ):
+            return submission
+        if (
+            submission.grading_status == StudentSubmission.GradingStatus.GRADING
+            and submission.updated_at >= now - timedelta(hours=1)
+        ):
+            raise SubmissionGradingInProgressError("This submission is already being graded.")
+        original_status = submission.grading_status
+        submission.grading_status = StudentSubmission.GradingStatus.GRADING
+        submission.last_error = ""
+        submission.save(update_fields=("grading_status", "last_error", "updated_at"))
 
     try:
         if submission.raw_response_text.strip():
@@ -92,17 +116,47 @@ def run_grading_pipeline(submission):
             StudentSubmission.GradingStatus.FINALIZED,
         ]
 
+        prepared = []
+        for question in questions:
+            mapping_item = mapping_by_key.get(question.part_key)
+            extracted_answer_text = mapping_item.extracted_answer_text.strip() if mapping_item else ""
+            mapping_confidence = (
+                Decimal(str(mapping_item.mapping_confidence))
+                if mapping_item and mapping_item.mapping_confidence is not None else None
+            )
+            if extracted_answer_text:
+                grade = grade_question_part(
+                    question,
+                    question.reference_answer.answer_text,
+                    build_rubric_text(question),
+                    extracted_answer_text,
+                )
+                ai_score = Decimal(str(grade.score))
+                if question.max_marks is not None and ai_score > question.max_marks:
+                    ai_score = question.max_marks
+                ai_feedback = grade.feedback
+                reasoning_summary = grade.reasoning_summary
+                confidence_score = (
+                    Decimal(str(grade.confidence_score))
+                    if grade.confidence_score is not None else None
+                )
+                needs_review = grade.needs_review
+            else:
+                ai_score = Decimal("0")
+                ai_feedback = "No answer found for this question."
+                reasoning_summary = "The submission did not contain a usable answer for this question part."
+                confidence_score = Decimal("1.00")
+                needs_review = False
+            prepared.append((
+                question, extracted_answer_text, mapping_confidence, ai_score,
+                ai_feedback, reasoning_summary, confidence_score, needs_review,
+            ))
+
         with transaction.atomic():
-            for question in questions:
-                mapping_item = mapping_by_key.get(question.part_key)
-                extracted_answer_text = (
-                    mapping_item.extracted_answer_text.strip() if mapping_item else ""
-                )
-                mapping_confidence = (
-                    Decimal(str(mapping_item.mapping_confidence))
-                    if mapping_item and mapping_item.mapping_confidence is not None
-                    else None
-                )
+            for (
+                question, extracted_answer_text, mapping_confidence, ai_score,
+                ai_feedback, reasoning_summary, confidence_score, needs_review,
+            ) in prepared:
                 answer_part, _ = SubmissionAnswerPart.objects.get_or_create(
                     submission=submission,
                     question_part=question,
@@ -116,33 +170,6 @@ def run_grading_pipeline(submission):
                         "updated_at",
                     )
                 )
-
-                if extracted_answer_text:
-                    grade = grade_question_part(
-                        question,
-                        question.reference_answer.answer_text,
-                        build_rubric_text(question),
-                        extracted_answer_text,
-                    )
-                    ai_score = Decimal(str(grade.score))
-                    if question.max_marks is not None and ai_score > question.max_marks:
-                        ai_score = question.max_marks
-                    ai_feedback = grade.feedback
-                    reasoning_summary = grade.reasoning_summary
-                    confidence_score = (
-                        Decimal(str(grade.confidence_score))
-                        if grade.confidence_score is not None
-                        else None
-                    )
-                    needs_review = grade.needs_review
-                else:
-                    ai_score = Decimal("0")
-                    ai_feedback = "No answer found for this question."
-                    reasoning_summary = (
-                        "The submission did not contain a usable answer for this question part."
-                    )
-                    confidence_score = Decimal("1.00")
-                    needs_review = False
 
                 result, _ = GradingResult.objects.get_or_create(
                     submission=submission,
@@ -181,6 +208,8 @@ def run_grading_pipeline(submission):
         logger.exception("Grading failed for submission %s", submission.pk)
         submission.grading_status = StudentSubmission.GradingStatus.FAILED
         if isinstance(exc, SubmissionNotReadyError):
+            submission.last_error = str(exc)
+        elif isinstance(exc, LLMQuotaExceeded):
             submission.last_error = str(exc)
         elif isinstance(exc, (LLMConfigurationError, LLMGenerationError)):
             submission.last_error = public_llm_error(exc)

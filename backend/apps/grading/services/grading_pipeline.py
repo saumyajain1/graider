@@ -7,8 +7,8 @@ from .openai_client import OpenAIChatService
 from .generation import build_shared_context, format_question_label
 from .schemas import GeneratedQuestionGradeSchema, SubmissionAnswerMappingSchema
 
-MAPPING_MODEL = os.getenv("OPENAI_MAPPING_MODEL", "gpt-5.4-mini")
-GRADING_MODEL = os.getenv("OPENAI_GRADING_MODEL", "gpt-5.4-mini")
+MAPPING_MODEL = os.getenv("OPENAI_MAPPING_MODEL", "gpt-6-luna")
+GRADING_MODEL = os.getenv("OPENAI_GRADING_MODEL", "gpt-6-luna")
 
 
 def map_submission_answers(
@@ -30,6 +30,8 @@ def map_submission_answers(
     )
 
     return service.parse(
+        user=assignment.teacher,
+        operation="answer_mapping",
         model=MAPPING_MODEL,
         response_format=SubmissionAnswerMappingSchema,
         system_prompt=dedent(
@@ -63,6 +65,8 @@ def grade_question_part(
     shared_context = build_shared_context(question_part)
 
     return service.parse(
+        user=question_part.assignment.teacher,
+        operation="submission_grading",
         model=GRADING_MODEL,
         response_format=GeneratedQuestionGradeSchema,
         system_prompt=dedent(

@@ -15,7 +15,8 @@ from apps.grading.services import (
     LLMGenerationError,
     generate_question_parts,
 )
-from apps.grading.services.openai_client import public_llm_error
+from apps.grading.services.openai_client import LLMSpendLimitError, public_llm_error
+from apps.grading.services.usage import LLMQuotaExceeded
 
 
 def normalize_question_order(assignment):
@@ -134,7 +135,14 @@ class QuestionGenerateView(TeacherScopedView):
 
         try:
             parsed = generate_question_parts(assignment)
+        except LLMQuotaExceeded as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except LLMConfigurationError as exc:
+            return Response(
+                {"detail": public_llm_error(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except LLMSpendLimitError as exc:
             return Response(
                 {"detail": public_llm_error(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,

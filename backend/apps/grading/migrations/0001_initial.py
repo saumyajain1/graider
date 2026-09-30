@@ -1,8 +1,13 @@
 # Consolidated initial schema for the pre-launch Graider database.
 
 import apps.grading.models
+from django.conf import settings
 import django.db.models.deletion
 from django.db import migrations, models
+
+
+def create_quota_lock(apps, schema_editor):
+    apps.get_model("grading", "LLMQuotaLock").objects.using(schema_editor.connection.alias).get_or_create(id=1)
 
 
 class Migration(migrations.Migration):
@@ -10,6 +15,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("assignments", "0001_initial"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
@@ -313,5 +319,33 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={"ordering": ("-created_at", "-id")},
+        ),
+        migrations.CreateModel(
+            name="LLMQuotaLock",
+            fields=[
+                ("id", models.PositiveSmallIntegerField(default=1, editable=False, primary_key=True, serialize=False)),
+            ],
+        ),
+        migrations.CreateModel(
+            name="LLMUsage",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("operation", models.CharField(max_length=32)),
+                ("model", models.CharField(max_length=100)),
+                ("input_tokens", models.PositiveIntegerField(default=0)),
+                ("output_tokens", models.PositiveIntegerField(default=0)),
+                ("total_tokens", models.PositiveIntegerField(default=0)),
+                ("reserved_tokens", models.PositiveIntegerField(default=0)),
+                ("status", models.CharField(choices=[("pending", "Pending"), ("succeeded", "Succeeded"), ("failed", "Failed"), ("uncertain", "Uncertain"), ("unmetered", "Succeeded without usage data")], default="pending", max_length=16)),
+                ("provider_request_id", models.CharField(blank=True, max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("completed_at", models.DateTimeField(blank=True, null=True)),
+                ("user", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="llm_usages", to=settings.AUTH_USER_MODEL)),
+            ],
+            options={"indexes": [models.Index(fields=["user", "created_at"], name="llm_usage_user_created_idx")]},
+        ),
+        migrations.RunPython(
+            create_quota_lock,
+            migrations.RunPython.noop,
         ),
     ]

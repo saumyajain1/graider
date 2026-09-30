@@ -14,7 +14,7 @@ Graider is a local-first MVP for AI-assisted grading. It lets a teacher:
 
 - `backend/`: Django + Django REST Framework + SQLite locally or Neon PostgreSQL in production
 - `frontend/`: React + Vite + Tailwind
-- OpenAI models: `gpt-5.4-mini` for all current AI tasks
+- OpenAI models: `gpt-6-luna` for all current AI tasks, with reasoning effort configured per task
 
 ## Local setup
 
@@ -91,7 +91,30 @@ Django serves the React page for browser routes, and WhiteNoise serves its compi
 
 Graider keeps Django session login. Login, registration, and logout require a CSRF token; the frontend obtains it from `GET /api/auth/me` and sends it with writes. Production requires HTTPS, sets secure cookies and browser security headers, and accepts only the hostnames in `DJANGO_ALLOWED_HOSTS`. The initial HSTS duration is one hour without subdomain or preload directives, suitable while using a Render-provided hostname.
 
-Login, registration, and auth-status requests have basic per-IP limits. Their defaults are `10/min`, `5/hour`, and `120/min`; change `GRAIDER_LOGIN_RATE`, `GRAIDER_REGISTER_RATE`, and `GRAIDER_AUTH_CHECK_RATE` if needed. These use Django's local in-memory cache, so counters reset when the process restarts and are not a hard abuse or cost boundary. The global AI budget in Step 5 is the cost boundary.
+Login, registration, and auth-status requests have basic per-IP limits. Their defaults are `10/min`, `5/hour`, and `120/min`; change `GRAIDER_LOGIN_RATE`, `GRAIDER_REGISTER_RATE`, and `GRAIDER_AUTH_CHECK_RATE` if needed. These use Django's local in-memory cache, so counters reset when the process restarts and are not a hard abuse or cost boundary. The PostgreSQL AI token quota and the OpenAI project spend limit provide the cost controls.
+
+## AI usage safeguards (Step 5)
+
+All AI workflows default to `gpt-6-luna`. The four `OPENAI_*_MODEL` settings select models for questions, artifacts (reference answers and rubrics), answer mapping, and grading. Reasoning effort is configured independently for each operation:
+
+| Task | Environment setting | Default |
+| --- | --- | --- |
+| Extract questions | `OPENAI_QUESTION_REASONING_EFFORT` | `medium` |
+| Repair extracted questions | `OPENAI_QUESTION_REPAIR_REASONING_EFFORT` | `low` |
+| Generate reference answers | `OPENAI_REFERENCE_REASONING_EFFORT` | `medium` |
+| Generate rubrics | `OPENAI_RUBRIC_REASONING_EFFORT` | `medium` |
+| Match student answers to questions | `OPENAI_MAPPING_REASONING_EFFORT` | `low` |
+| Grade student answers | `OPENAI_GRADING_REASONING_EFFORT` | `medium` |
+
+Set these in the local `.env` or Render's environment settings and restart the backend after changes. [GPT-6 Luna supports](https://developers.openai.com/api/docs/models/gpt-6-luna) `none`, `low`, `medium`, `high`, `xhigh`, and `max`; an invalid value is rejected before reserving usage or calling OpenAI. Medium is the starting point for math, question structure, and grading decisions; low handles matching and small repairs. Higher effort can consume more reasoning tokens, which count toward the output ceiling and token quotas. These defaults have not yet been compared on live grading examples.
+
+Every OpenAI request reserves a conservative token estimate in PostgreSQL before it starts. A short row lock serializes quota checks across users, and the provider call runs after that transaction ends. Graider records the operation, user, model, token counts, result, and provider request ID. It replaces the reservation with OpenAI's reported usage; if a timeout makes usage uncertain, it keeps the reservation until the applicable quota window ends. Automatic SDK retries are disabled to avoid duplicate spend after uncertain failures.
+
+The configurable limits are `GRAIDER_USER_DAILY_TOKENS`, `GRAIDER_USER_MONTHLY_TOKENS`, `GRAIDER_GLOBAL_MONTHLY_TOKENS`, `GRAIDER_USER_AI_REQUESTS_PER_MINUTE`, and `GRAIDER_MAX_OUTPUT_TOKENS`. Each AI operation also has its own output ceiling. Grade-all is limited by `GRAIDER_MAX_GRADE_ALL_SUBMISSIONS` and `GRAIDER_MAX_GRADE_ALL_QUESTIONS`; recently completed grading is reused for `GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS`. Usage can be inspected in Django admin.
+
+Before making Graider public, create a dedicated OpenAI API project and project key. In the API Platform, open **Project settings → Limits → Spend → Edit spend limit**, choose a monthly amount you are comfortable with, turn on **Enforce a hard limit**, and save. Restrict Model Usage to the models in `.env.example` where available, and optionally add spend alerts below the cap. Put only the project key in Render's `OPENAI_API_KEY` setting; keep it out of Git and the frontend. OpenAI says [hard-limit enforcement is not instantaneous](https://developers.openai.com/api/docs/guides/spend-limits), so spending can slightly exceed the configured amount.
+
+The prelaunch schema change is folded into `backend/apps/grading/migrations/0001_initial.py`. The existing disposable Neon database needs a clean rebuild before this version is deployed; do not reset a database containing data to preserve.
 
 ## CSV format
 

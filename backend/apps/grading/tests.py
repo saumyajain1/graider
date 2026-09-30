@@ -2,7 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from io import BytesIO
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -113,6 +114,46 @@ class GradingArtifactApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
+
+    @patch("apps.grading.views.generate_reference_answer")
+    def test_quota_exhaustion_returns_friendly_429(self, generate_answer):
+        from .services.usage import LLMQuotaExceeded
+
+        generate_answer.side_effect = LLMQuotaExceeded("Your daily AI allowance is used up.")
+        response = self.client.post(
+            reverse("reference-answer-generate", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.data["detail"], "Your daily AI allowance is used up.")
+
+    @patch("apps.grading.views.generate_reference_answer")
+    def test_provider_spend_limit_returns_friendly_503(self, generate_answer):
+        from .services.openai_client import LLMSpendLimitError
+
+        generate_answer.side_effect = LLMSpendLimitError("Sensitive provider details")
+        response = self.client.post(
+            reverse("reference-answer-generate", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("spending limit", response.data["detail"])
+        self.assertNotIn("Sensitive", response.data["detail"])
+
+    @patch("apps.grading.views.generate_rubric_criteria")
+    def test_rubric_ai_call_does_not_hold_database_transaction(self, generate_rubric):
+        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
+        baseline_atomic_depth = len(connection.atomic_blocks)
+
+        def provider_call(*args):
+            self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
+            return SimpleNamespace(criteria=[SimpleNamespace(
+                title="Accuracy", description="Accurate", max_points=5
+            )])
+
+        generate_rubric.side_effect = provider_call
+        response = self.client.post(
+            reverse("rubric-generate", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_manual_reference_answer_create_and_patch(self):
         create_response = self.client.post(
@@ -360,6 +401,89 @@ class GradingArtifactApiTests(APITestCase):
         self.assertEqual(response.data["graded_count"], 2)
         self.assertEqual(response.data["failed_count"], 0)
 
+    @override_settings(GRAIDER_MAX_GRADE_ALL_SUBMISSIONS=1)
+    @patch("apps.grading.views.run_grading_pipeline")
+    def test_grade_all_rejects_too_many_submissions_before_ai_calls(self, grade_pipeline):
+        for student in ("Alice", "Bob"):
+            StudentSubmission.objects.create(assignment=self.assignment, student_name=student)
+        response = self.client.post(
+            reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        grade_pipeline.assert_not_called()
+
+    @override_settings(GRAIDER_MAX_GRADE_ALL_QUESTIONS=1)
+    @patch("apps.grading.views.run_grading_pipeline")
+    def test_grade_all_rejects_too_many_questions_before_ai_calls(self, grade_pipeline):
+        QuestionPart.objects.create(
+            assignment=self.assignment, part_key="Q2", text="Second question", display_order=1
+        )
+        StudentSubmission.objects.create(assignment=self.assignment, student_name="Alice")
+        response = self.client.post(
+            reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        grade_pipeline.assert_not_called()
+
+    @patch("apps.grading.views.run_grading_pipeline")
+    def test_grade_all_stops_on_provider_spend_limit(self, grade_pipeline):
+        from .services.openai_client import LLMSpendLimitError
+
+        StudentSubmission.objects.create(assignment=self.assignment, student_name="Alice")
+        grade_pipeline.side_effect = LLMSpendLimitError("Sensitive provider details")
+        response = self.client.post(
+            reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("Sensitive", response.data["detail"])
+
+    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    def test_repeat_grading_reuses_recent_result_without_duplicate_ai_spend(self, map_answers, grade_question):
+        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
+        RubricCriterion.objects.create(
+            question_part=self.question, title="Accuracy", description="Accurate", max_points="5"
+        )
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment, student_name="Alice", raw_response_text="Answer"
+        )
+        baseline_atomic_depth = len(connection.atomic_blocks)
+
+        def mapping(*args):
+            self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
+            return SimpleNamespace(answers=[SimpleNamespace(
+                part_key="Q1", extracted_answer_text="Answer", mapping_confidence=0.9
+            )])
+
+        def grading(*args):
+            self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
+            return SimpleNamespace(
+                score=4, feedback="Good", reasoning_summary="Good", confidence_score=0.9,
+                needs_review=False,
+            )
+
+        map_answers.side_effect = mapping
+        grade_question.side_effect = grading
+        route = reverse("submission-grade", args=[submission.id])
+        self.assertEqual(self.client.post(route, {}, format="json").status_code, 200)
+        self.assertEqual(self.client.post(route, {}, format="json").status_code, 200)
+        self.assertEqual(map_answers.call_count, 1)
+        self.assertEqual(grade_question.call_count, 1)
+
+    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    def test_in_progress_grading_rejects_second_request(self, map_answers):
+        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
+        RubricCriterion.objects.create(
+            question_part=self.question, title="Accuracy", description="Accurate", max_points="5"
+        )
+        submission = StudentSubmission.objects.create(
+            assignment=self.assignment, student_name="Alice", raw_response_text="Answer",
+            grading_status=StudentSubmission.GradingStatus.GRADING,
+        )
+        response = self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        self.assertEqual(response.status_code, 409)
+        map_answers.assert_not_called()
+
     @patch("apps.grading.services.submission_workflow.grade_question_part")
     @patch("apps.grading.services.submission_workflow.map_submission_answers")
     def test_submission_grading_endpoint_returns_nested_payload(
@@ -580,7 +704,8 @@ class QuestionGenerationServiceTests(TestCase):
         self.assertIn("Previous part 1.1", shared_context)
         self.assertIn(first_question.text, shared_context)
 
-    def test_generate_question_parts_ignores_formula_lines_when_finding_sections(self):
+    @patch("apps.grading.services.generation.question_set_needs_repair", return_value=False)
+    def test_generate_question_parts_ignores_formula_lines_when_finding_sections(self, _needs_repair):
         assignment = SimpleNamespace(
             title="Assignment 1 - Q1",
             course_name="CPSC 440",
