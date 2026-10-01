@@ -26,6 +26,7 @@ export function useLogin() {
   return useMutation({
     mutationFn: (payload: AuthPayload) => login(payload),
     onSuccess: (user) => {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], user)
     },
   })
@@ -36,6 +37,7 @@ export function useRegister() {
   return useMutation({
     mutationFn: (payload: AuthPayload) => register(payload),
     onSuccess: (user) => {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], user)
     },
   })
@@ -46,6 +48,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: logout,
     onSuccess: () => {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], null)
     },
   })

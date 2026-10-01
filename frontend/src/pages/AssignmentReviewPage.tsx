@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
+
 import { getAssignment } from '../api/assignments'
 import { listSubmissions } from '../api/grading'
 
@@ -36,6 +39,18 @@ export function AssignmentReviewPage() {
 
   if (assignmentQuery.isPending || submissionsQuery.isPending) {
     return <div className="text-sm text-slate-600">Loading review queue...</div>
+  }
+
+  if (assignmentQuery.isError || submissionsQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || submissionsQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void submissionsQuery.refetch()
+        }}
+      />
+    )
   }
 
   const assignment = assignmentQuery.data
@@ -117,7 +132,7 @@ export function AssignmentReviewPage() {
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusTone(submission.grading_status)}`}
                 >
-                  {submission.grading_status.replace('_', ' ')}
+                  {formatStatus(submission.grading_status)}
                 </span>
               </div>
 

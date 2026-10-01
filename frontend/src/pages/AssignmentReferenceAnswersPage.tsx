@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+
 import { getAssignment } from '../api/assignments'
 import {
   createReferenceAnswer,
@@ -14,12 +16,14 @@ import { getApiErrorMessage } from '../api/errors'
 
 function ReferenceAnswerEditor({
   item,
+  isBusy,
   onGenerate,
   onSave,
 }: {
   item: ReferenceAnswerItem
-  onGenerate: () => Promise<void>
-  onSave: (answerText: string) => Promise<void>
+  isBusy: boolean
+  onGenerate: () => void
+  onSave: (answerText: string) => void
 }) {
   const [answerText, setAnswerText] = useState(item.answer_text)
 
@@ -28,7 +32,10 @@ function ReferenceAnswerEditor({
   }, [item])
 
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <fieldset
+      disabled={isBusy}
+      className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-400 uppercase">
@@ -49,6 +56,7 @@ function ReferenceAnswerEditor({
       </div>
 
       <textarea
+        aria-label={`Reference answer for ${item.display_label}`}
         rows={8}
         value={answerText}
         onChange={(event) => setAnswerText(event.target.value)}
@@ -59,20 +67,20 @@ function ReferenceAnswerEditor({
       <div className="mt-5 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => void onSave(answerText)}
+          onClick={() => onSave(answerText)}
           className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
         >
           Save answer
         </button>
         <button
           type="button"
-          onClick={() => void onGenerate()}
+          onClick={() => onGenerate()}
           className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
         >
           Generate with AI
         </button>
       </div>
-    </article>
+    </fieldset>
   )
 }
 
@@ -139,6 +147,18 @@ export function AssignmentReferenceAnswersPage() {
     return <div className="text-sm text-slate-600">Loading reference answers...</div>
   }
 
+  if (assignmentQuery.isError || answersQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || answersQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void answersQuery.refetch()
+        }}
+      />
+    )
+  }
+
   const assignment = assignmentQuery.data
   const answers = answersQuery.data ?? []
 
@@ -156,7 +176,7 @@ export function AssignmentReferenceAnswersPage() {
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Generate model answers with AI or draft them manually. These answers feed the rubric
-            builder and later guide grading.
+            builder and guide grading.
           </p>
         </div>
 
@@ -165,7 +185,7 @@ export function AssignmentReferenceAnswersPage() {
             Workflow step
           </p>
           <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Reference answers should be clear, compact, and editable.
+            Prepare the answer key.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
             If AI generation is unavailable, you can still write every answer manually and continue
@@ -173,7 +193,8 @@ export function AssignmentReferenceAnswersPage() {
           </p>
           <button
             type="button"
-            onClick={() => void generateMutation.mutateAsync(undefined)}
+            disabled={saveMutation.isPending || generateMutation.isPending}
+            onClick={() => generateMutation.mutate(undefined)}
             className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100"
           >
             {generateMutation.isPending ? 'Generating...' : 'Generate all answers'}
@@ -182,7 +203,10 @@ export function AssignmentReferenceAnswersPage() {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
           {errorMessage}
         </div>
       ) : null}
@@ -193,11 +217,12 @@ export function AssignmentReferenceAnswersPage() {
             <ReferenceAnswerEditor
               key={item.question_part_id}
               item={item}
-              onGenerate={async () => {
-                await generateMutation.mutateAsync(item.question_part_id)
+              isBusy={saveMutation.isPending || generateMutation.isPending}
+              onGenerate={() => {
+                generateMutation.mutate(item.question_part_id)
               }}
-              onSave={async (answerText) => {
-                await saveMutation.mutateAsync({ item, answer_text: answerText })
+              onSave={(answerText) => {
+                saveMutation.mutate({ item, answer_text: answerText })
               }}
             />
           ))}

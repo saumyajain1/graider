@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
+
 import { getAssignment } from '../api/assignments'
 import { getApiErrorMessage } from '../api/errors'
 import {
@@ -164,6 +167,18 @@ export function AssignmentSubmissionsPage() {
     return <div className="text-sm text-slate-600">Loading submissions...</div>
   }
 
+  if (assignmentQuery.isError || submissionsQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || submissionsQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void submissionsQuery.refetch()
+        }}
+      />
+    )
+  }
+
   const assignment = assignmentQuery.data
   if (!assignment) {
     return <div className="text-sm text-rose-700">Assignment not found.</div>
@@ -200,16 +215,18 @@ export function AssignmentSubmissionsPage() {
             Batch action
           </p>
           <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Grade the entire roster once the rubric is stable.
+            Grade submitted responses
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Failed rows remain visible with their latest error so you can retry after fixing the
-            source material or AI configuration.
+            Prepare reference answers and rubric criteria for every question before grading. Review
+            the results and retry any submissions that need attention.
           </p>
           <button
             type="button"
-            disabled={submissions.length === 0 || gradeAllMutation.isPending}
-            onClick={() => void gradeAllMutation.mutateAsync()}
+            disabled={
+              submissions.length === 0 || gradeAllMutation.isPending || gradeMutation.isPending
+            }
+            onClick={() => gradeAllMutation.mutate()}
             className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {gradeAllMutation.isPending ? 'Grading roster...' : 'Grade all submissions'}
@@ -218,7 +235,10 @@ export function AssignmentSubmissionsPage() {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
           {errorMessage}
         </div>
       ) : null}
@@ -232,9 +252,9 @@ export function AssignmentSubmissionsPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
         <form
           className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
-          onSubmit={async (event) => {
+          onSubmit={(event) => {
             event.preventDefault()
-            await createMutation.mutateAsync(manualForm)
+            createMutation.mutate(manualForm)
           }}
         >
           <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
@@ -316,20 +336,21 @@ export function AssignmentSubmissionsPage() {
 
         <form
           className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6"
-          onSubmit={async (event) => {
+          onSubmit={(event) => {
             event.preventDefault()
             if (!csvFile) {
               setStatusMessage(null)
               setErrorMessage('Choose a CSV file first.')
               return
             }
-            await importMutation.mutateAsync(csvFile)
+            importMutation.mutate(csvFile)
           }}
         >
           <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">Import CSV</h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Use columns `student_name` and either `response_text` or `raw_response_text`.
-            `student_identifier` or `student_id` is optional.
+            Use columns <code>student_name</code> and either <code>response_text</code> or{' '}
+            <code>raw_response_text</code>. <code>student_identifier</code> or{' '}
+            <code>student_id</code> is optional.
           </p>
 
           <label className="mt-5 block">
@@ -350,11 +371,21 @@ export function AssignmentSubmissionsPage() {
 
           <button
             type="submit"
-            disabled={importMutation.isPending}
+            disabled={!csvFile || importMutation.isPending}
             className="mt-5 rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {importMutation.isPending ? 'Importing...' : 'Import submissions'}
           </button>
+          {importsQuery.isError ? (
+            <div className="mt-5">
+              <QueryError
+                error={importsQuery.error}
+                onRetry={() => {
+                  void importsQuery.refetch()
+                }}
+              />
+            </div>
+          ) : null}
           {(importsQuery.data?.length ?? 0) > 0 ? (
             <div className="mt-6 border-t border-slate-200 pt-4">
               <h3 className="text-sm font-semibold text-slate-800">Previous imports</h3>
@@ -425,7 +456,7 @@ export function AssignmentSubmissionsPage() {
                       <span
                         className={`rounded-full px-3 py-1 ${getStatusTone(submission.grading_status)}`}
                       >
-                        {submission.grading_status.replace('_', ' ')}
+                        {formatStatus(submission.grading_status)}
                       </span>
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
                         {submission.total_score ? `${submission.total_score} total` : 'Not graded'}
@@ -464,8 +495,12 @@ export function AssignmentSubmissionsPage() {
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button
                       type="button"
-                      disabled={submission.grading_status === 'grading' || isMutatingThisRow}
-                      onClick={() => void gradeMutation.mutateAsync(submission.id)}
+                      disabled={
+                        submission.grading_status === 'grading' ||
+                        gradeMutation.isPending ||
+                        gradeAllMutation.isPending
+                      }
+                      onClick={() => gradeMutation.mutate(submission.id)}
                       className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isMutatingThisRow

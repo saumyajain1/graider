@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
+
 import {
   deleteAssignment,
   generateQuestions,
@@ -75,6 +78,17 @@ export function AssignmentOverviewPage() {
     return <div className="text-sm text-slate-600">Loading assignment...</div>
   }
 
+  if (assignmentQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+        }}
+      />
+    )
+  }
+
   if (!assignmentQuery.data) {
     return <div className="text-sm text-rose-700">Assignment not found.</div>
   }
@@ -87,7 +101,7 @@ export function AssignmentOverviewPage() {
         <div className="rounded-[2rem] border border-slate-200 p-6">
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700">
-              {assignment.status.replace('_', ' ')}
+              {formatStatus(assignment.status)}
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
               {assignment.question_count} questions
@@ -130,12 +144,10 @@ export function AssignmentOverviewPage() {
           <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
             Next step
           </p>
-          <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Build the question map manually first.
-          </h2>
+          <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">Set up your questions.</h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Phase 2 keeps the workflow explicit: create question parts by hand, reorder them, and
-            set marks before adding AI-generated artifacts in the next phase.
+            Generate questions from your assignment text or add them manually. Check their order and
+            marks, then build the reference answers and rubric.
           </p>
           <Link
             to={`/assignments/${assignment.id}/questions`}
@@ -148,9 +160,9 @@ export function AssignmentOverviewPage() {
 
       <form
         className="rounded-[2rem] border border-slate-200 p-6"
-        onSubmit={async (event) => {
+        onSubmit={(event) => {
           event.preventDefault()
-          await updateMutation.mutateAsync(form)
+          updateMutation.mutate(form)
         }}
       >
         <div className="grid gap-4 md:grid-cols-2">
@@ -240,6 +252,14 @@ export function AssignmentOverviewPage() {
           </div>
         ) : null}
 
+        {deleteMutation.isError ? (
+          <div
+            role="alert"
+            className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+          >
+            {getApiErrorMessage(deleteMutation.error)}
+          </div>
+        ) : null}
         {updateMutation.isSuccess ? (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             Assignment saved.
@@ -249,15 +269,28 @@ export function AssignmentOverviewPage() {
         <div className="mt-5 flex flex-wrap gap-3">
           <button
             type="submit"
-            disabled={updateMutation.isPending}
+            disabled={
+              updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending
+            }
             className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {updateMutation.isPending ? 'Saving...' : 'Save assignment'}
           </button>
           <button
             type="button"
-            disabled={regenerateMutation.isPending}
-            onClick={() => void regenerateMutation.mutateAsync(form)}
+            disabled={
+              updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending
+            }
+            onClick={() => {
+              if (
+                assignment.question_count > 0 &&
+                !window.confirm(
+                  'Replace all questions? Existing reference answers, rubrics, and per-question grading results will also be removed.',
+                )
+              )
+                return
+              regenerateMutation.mutate(form)
+            }}
             className="rounded-full border border-fuchsia-300 px-5 py-3 text-sm font-semibold text-fuchsia-700 transition hover:bg-fuchsia-50 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {regenerateMutation.isPending
@@ -272,14 +305,16 @@ export function AssignmentOverviewPage() {
           </Link>
           <button
             type="button"
-            disabled={deleteMutation.isPending}
+            disabled={
+              updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending
+            }
             onClick={() => {
               if (
                 window.confirm(
                   `Delete "${assignment.title}" and all of its generated answers, rubric, submissions, and grading data?`,
                 )
               ) {
-                void deleteMutation.mutateAsync()
+                deleteMutation.mutate()
               }
             }}
             className="rounded-full border border-rose-200 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"

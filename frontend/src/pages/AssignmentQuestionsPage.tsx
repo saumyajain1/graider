@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
+
 import {
   createQuestion,
   deleteQuestion,
@@ -24,6 +27,7 @@ type QuestionEditorPayload = {
 
 function QuestionEditor({
   question,
+  isBusy,
   isFirst,
   isLast,
   onMove,
@@ -31,11 +35,12 @@ function QuestionEditor({
   onSave,
 }: {
   question: QuestionPart
+  isBusy: boolean
   isFirst: boolean
   isLast: boolean
-  onMove: (direction: 'up' | 'down') => Promise<void>
-  onDelete: () => Promise<void>
-  onSave: (payload: QuestionEditorPayload) => Promise<void>
+  onMove: (direction: 'up' | 'down') => void
+  onDelete: () => void
+  onSave: (payload: QuestionEditorPayload) => void
 }) {
   const [sourceLabel, setSourceLabel] = useState(question.source_label ?? '')
   const [parentKey, setParentKey] = useState(question.parent_key ?? '')
@@ -52,7 +57,10 @@ function QuestionEditor({
   }, [question])
 
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+    <fieldset
+      disabled={isBusy}
+      className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-400 uppercase">
@@ -66,7 +74,7 @@ function QuestionEditor({
           <button
             type="button"
             disabled={isFirst}
-            onClick={() => void onMove('up')}
+            onClick={() => onMove('up')}
             className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Move up
@@ -74,7 +82,7 @@ function QuestionEditor({
           <button
             type="button"
             disabled={isLast}
-            onClick={() => void onMove('down')}
+            onClick={() => onMove('down')}
             className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Move down
@@ -89,6 +97,7 @@ function QuestionEditor({
             value={sourceLabel}
             onChange={(event) => setSourceLabel(event.target.value)}
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Source label"
             placeholder="1.1"
           />
         </label>
@@ -98,6 +107,7 @@ function QuestionEditor({
             value={parentKey}
             onChange={(event) => setParentKey(event.target.value)}
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Shared group"
             placeholder="1"
           />
         </label>
@@ -137,7 +147,7 @@ function QuestionEditor({
         <button
           type="button"
           onClick={() =>
-            void onSave({
+            onSave({
               source_label: sourceLabel.trim() || undefined,
               parent_key: parentKey.trim() || undefined,
               text,
@@ -151,19 +161,20 @@ function QuestionEditor({
         </button>
         <button
           type="button"
-          onClick={() => void onDelete()}
+          onClick={() => onDelete()}
           className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
         >
           Delete
         </button>
       </div>
-    </article>
+    </fieldset>
   )
 }
 
 export function AssignmentQuestionsPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [newQuestion, setNewQuestion] = useState({
     source_label: '',
     parent_key: '',
@@ -186,6 +197,8 @@ export function AssignmentQuestionsPage() {
 
   const createMutation = useMutation({
     mutationFn: (payload: QuestionEditorPayload) => createQuestion(assignmentId!, payload),
+    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onMutate: () => setErrorMessage(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
@@ -203,6 +216,8 @@ export function AssignmentQuestionsPage() {
   const updateMutation = useMutation({
     mutationFn: ({ questionId, payload }: { questionId: number; payload: QuestionEditorPayload }) =>
       updateQuestion(questionId, payload),
+    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onMutate: () => setErrorMessage(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
     },
@@ -210,6 +225,8 @@ export function AssignmentQuestionsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (questionId: number) => deleteQuestion(questionId),
+    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onMutate: () => setErrorMessage(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
@@ -219,6 +236,8 @@ export function AssignmentQuestionsPage() {
 
   const reorderMutation = useMutation({
     mutationFn: (questionIds: number[]) => reorderQuestions(assignmentId!, questionIds),
+    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onMutate: () => setErrorMessage(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
     },
@@ -226,6 +245,8 @@ export function AssignmentQuestionsPage() {
 
   const generateMutation = useMutation({
     mutationFn: () => generateQuestions(assignmentId!, true),
+    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onMutate: () => setErrorMessage(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
@@ -237,6 +258,24 @@ export function AssignmentQuestionsPage() {
     return <div className="text-sm text-slate-600">Loading questions...</div>
   }
 
+  if (assignmentQuery.isError || questionsQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || questionsQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void questionsQuery.refetch()
+        }}
+      />
+    )
+  }
+
+  const isBusy =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    deleteMutation.isPending ||
+    reorderMutation.isPending ||
+    generateMutation.isPending
   const assignment = assignmentQuery.data
   const questions = questionsQuery.data ?? []
 
@@ -249,17 +288,17 @@ export function AssignmentQuestionsPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
         <div className="rounded-[2rem] border border-slate-200 p-6">
           <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
-            Manual question builder
+            Question editor
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Create the question structure explicitly now. In the next phase, AI will be able to
-            generate question parts automatically, but manual editing remains the source of truth.
+            Generate questions from your assignment text or add them manually. Edit the wording,
+            numbering, and marks before continuing.
           </p>
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold text-slate-500">
             <span className="rounded-full bg-slate-100 px-3 py-1">{questions.length} parts</span>
             <span className="rounded-full bg-slate-100 px-3 py-1">
-              Status: {assignment.status.replace('_', ' ')}
+              Status: {formatStatus(assignment.status)}
             </span>
           </div>
         </div>
@@ -269,11 +308,11 @@ export function AssignmentQuestionsPage() {
             AI generation
           </p>
           <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Questions become the backbone for answers and rubric generation.
+            Generate questions from your assignment.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Keep the hierarchy, context blocks, and marks clean. These records directly drive the
-            reference answers, rubric, mapping, and review screens.
+            Review the question wording, shared context, and marks before preparing answers and
+            rubrics.
           </p>
           <Link
             to={`/assignments/${assignment.id}/overview`}
@@ -283,8 +322,18 @@ export function AssignmentQuestionsPage() {
           </Link>
           <button
             type="button"
-            onClick={() => void generateMutation.mutateAsync()}
-            className="mt-3 inline-flex rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+            disabled={isBusy}
+            onClick={() => {
+              if (
+                questions.length > 0 &&
+                !window.confirm(
+                  'Replace all questions? Existing reference answers, rubrics, and per-question grading results will also be removed.',
+                )
+              )
+                return
+              generateMutation.mutate()
+            }}
+            className="mt-3 inline-flex rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
           >
             {generateMutation.isPending
               ? 'Overwriting...'
@@ -293,9 +342,12 @@ export function AssignmentQuestionsPage() {
         </div>
       </section>
 
-      {generateMutation.isError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {getApiErrorMessage(generateMutation.error)}
+      {errorMessage ? (
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
+          {errorMessage}
         </div>
       ) : null}
 
@@ -318,6 +370,7 @@ export function AssignmentQuestionsPage() {
               }))
             }
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Source label"
             placeholder="1.1"
           />
           <input
@@ -329,9 +382,11 @@ export function AssignmentQuestionsPage() {
               }))
             }
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Shared group"
             placeholder="1"
           />
           <select
+            aria-label="Part type"
             value={newQuestion.part_type}
             onChange={(event) =>
               setNewQuestion((current) => ({
@@ -350,6 +405,7 @@ export function AssignmentQuestionsPage() {
               setNewQuestion((current) => ({ ...current, max_marks: event.target.value }))
             }
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Maximum marks"
             placeholder="Marks"
           />
           <input
@@ -358,12 +414,13 @@ export function AssignmentQuestionsPage() {
               setNewQuestion((current) => ({ ...current, text: event.target.value }))
             }
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Question or context text"
             placeholder="Write the question text or context block..."
           />
           <button
             type="button"
             onClick={() =>
-              void createMutation.mutateAsync({
+              createMutation.mutate({
                 source_label: newQuestion.source_label.trim() || undefined,
                 parent_key: newQuestion.parent_key.trim() || undefined,
                 text: newQuestion.text,
@@ -371,7 +428,7 @@ export function AssignmentQuestionsPage() {
                 part_type: newQuestion.part_type,
               })
             }
-            disabled={!newQuestion.text.trim() || createMutation.isPending}
+            disabled={!newQuestion.text.trim() || isBusy}
             className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Add part
@@ -385,22 +442,23 @@ export function AssignmentQuestionsPage() {
             <QuestionEditor
               key={question.id}
               question={question}
+              isBusy={isBusy}
               isFirst={index === 0}
               isLast={index === questions.length - 1}
-              onMove={async (direction) => {
+              onMove={(direction) => {
                 const reordered = [...questions]
                 const targetIndex = direction === 'up' ? index - 1 : index + 1
                 ;[reordered[index], reordered[targetIndex]] = [
                   reordered[targetIndex],
                   reordered[index],
                 ]
-                await reorderMutation.mutateAsync(reordered.map((item) => item.id))
+                reorderMutation.mutate(reordered.map((item) => item.id))
               }}
-              onDelete={async () => {
-                await deleteMutation.mutateAsync(question.id)
+              onDelete={() => {
+                deleteMutation.mutate(question.id)
               }}
-              onSave={async (payload) => {
-                await updateMutation.mutateAsync({ questionId: question.id, payload })
+              onSave={(payload) => {
+                updateMutation.mutate({ questionId: question.id, payload })
               }}
             />
           ))}

@@ -1,6 +1,6 @@
 services:
   graider:
-    image: saumyaj1/graider:${GRAIDER_IMAGE_TAG:-preview}
+    image: saumyaj1/graider:${GRAIDER_IMAGE_TAG:-latest}
     ports:
       - '127.0.0.1:8000:10000'
     env_file: .env

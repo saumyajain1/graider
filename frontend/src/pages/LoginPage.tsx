@@ -1,11 +1,16 @@
 import { useState } from 'react'
 
+import { useEffect } from 'react'
+
 import { getApiErrorMessage } from '../api/errors'
 import { useLogin, useRegister } from '../hooks/useAuth'
 
 type AuthMode = 'login' | 'register'
 
 export function LoginPage() {
+  useEffect(() => {
+    document.title = 'Sign in | Graider'
+  }, [])
   const loginMutation = useLogin()
   const registerMutation = useRegister()
   const [mode, setMode] = useState<AuthMode>('login')
@@ -26,19 +31,19 @@ export function LoginPage() {
         <section className="glass-panel overflow-hidden p-8 md:p-10">
           <div className="max-w-xl">
             <p className="text-sm font-semibold tracking-[0.28em] text-fuchsia-100/60 uppercase">
-              Graider MVP
+              Graider
             </p>
             <h1 className="mt-4 font-['Space_Grotesk'] text-5xl font-bold leading-tight">
-              Grade written work with a structured AI workflow.
+              AI-assisted grading, with you in control.
             </h1>
             <p className="mt-6 text-base text-fuchsia-50/78">
-              Build assignments, generate grading artifacts, review AI suggestions, and finalize
-              marks without turning the product into a chatbot.
+              Create assignments, prepare answers and rubrics, and review scores and feedback before
+              finalizing results.
             </p>
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {['Teacher-owned workflow', 'Editable AI outputs', 'Question-by-question review'].map(
+            {['Private assignments', 'Editable AI suggestions', 'Question-by-question review'].map(
               (value) => (
                 <div
                   key={value}
@@ -57,7 +62,13 @@ export function LoginPage() {
               <button
                 key={entry}
                 type="button"
-                onClick={() => setMode(entry)}
+                disabled={activeMutation.isPending}
+                aria-pressed={mode === entry}
+                onClick={() => {
+                  setMode(entry)
+                  loginMutation.reset()
+                  registerMutation.reset()
+                }}
                 className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                   mode === entry ? 'bg-slate-950 text-white' : 'text-slate-600 hover:text-slate-950'
                 }`}
@@ -71,18 +82,20 @@ export function LoginPage() {
             {mode === 'login' ? 'Welcome back' : 'Create your teacher account'}
           </h2>
           <p className="mt-3 text-sm text-slate-600">
-            This is a self-serve MVP. Registration signs you in immediately.
+            {mode === 'login'
+              ? 'Sign in to continue to your assignments.'
+              : 'Create an account to start grading. You’ll be signed in automatically.'}
           </p>
 
           <form
             className="mt-8 space-y-4"
-            onSubmit={async (event) => {
+            onSubmit={(event) => {
               event.preventDefault()
 
               if (mode === 'login') {
-                await loginMutation.mutateAsync(form)
+                loginMutation.mutate(form)
               } else {
-                await registerMutation.mutateAsync(form)
+                registerMutation.mutate(form)
               }
             }}
           >
@@ -91,6 +104,8 @@ export function LoginPage() {
                 <span className="mb-2 block text-sm font-medium text-slate-700">Full name</span>
                 <input
                   required
+                  autoComplete="name"
+                  maxLength={255}
                   value={form.full_name}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, full_name: event.target.value }))
@@ -106,6 +121,7 @@ export function LoginPage() {
               <input
                 required
                 type="email"
+                autoComplete="email"
                 value={form.email}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, email: event.target.value }))
@@ -120,12 +136,14 @@ export function LoginPage() {
               <input
                 required
                 type="password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                minLength={mode === 'register' ? 8 : undefined}
                 value={form.password}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, password: event.target.value }))
                 }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
-                placeholder="Minimum 8 characters"
+                placeholder={mode === 'login' ? 'Your password' : 'Minimum 8 characters'}
               />
               {mode === 'register' ? (
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -141,7 +159,10 @@ export function LoginPage() {
             </label>
 
             {errorMessage ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div
+                role="alert"
+                className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+              >
                 {errorMessage}
               </div>
             ) : null}

@@ -5,7 +5,7 @@ services:
     plan: free
     region: ohio
     image:
-      url: docker.io/saumyaj1/graider:preview
+      url: docker.io/saumyaj1/graider:latest
     healthCheckPath: /health/
     maxShutdownDelaySeconds: 120
     envVars:

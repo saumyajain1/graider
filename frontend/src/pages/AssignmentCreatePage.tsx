@@ -30,18 +30,18 @@ export function AssignmentCreatePage() {
         <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
           Assignment creation
         </p>
-        <h1 className="mt-3 section-title">Start a new grading project</h1>
+        <h1 className="mt-3 section-title">Create an assignment</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          Paste the assignment prompt, upload a .txt file, or try a PDF extraction. You can edit the
-          resulting text immediately after creation.
+          Paste your questions or upload a TXT file or PDF. You can review and edit the text after
+          creating the assignment.
         </p>
       </div>
 
       <form
         className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]"
-        onSubmit={async (event) => {
+        onSubmit={(event) => {
           event.preventDefault()
-          await createMutation.mutateAsync(form)
+          createMutation.mutate(form)
         }}
       >
         <section className="rounded-[2rem] border border-slate-200 p-6">
@@ -122,7 +122,10 @@ export function AssignmentCreatePage() {
             </label>
 
             {createMutation.isError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div
+                role="alert"
+                className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+              >
                 {getApiErrorMessage(
                   createMutation.error,
                   'Something went wrong while saving the assignment.',

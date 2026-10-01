@@ -45,6 +45,24 @@ select {
   font: inherit;
 }
 
+:where(a, button, input, textarea, select):focus-visible {
+  outline: 3px solid #a855f7;
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
 @layer components {
   .glass-panel {
     @apply rounded-3xl border border-white/10 bg-white/10 shadow-2xl shadow-purple-950/30 backdrop-blur-xl;

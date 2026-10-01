@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+
 import { getAssignment } from '../api/assignments'
 import {
   createRubricCriterion,
@@ -20,8 +22,8 @@ function RubricCriterionEditor({
   onDelete,
 }: {
   criterion: RubricCriterion
-  onSave: (payload: { title: string; description: string; max_points: string }) => Promise<void>
-  onDelete: () => Promise<void>
+  onSave: (payload: { title: string; description: string; max_points: string }) => void
+  onDelete: () => void
 }) {
   const [title, setTitle] = useState(criterion.title)
   const [description, setDescription] = useState(criterion.description)
@@ -40,32 +42,35 @@ function RubricCriterionEditor({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+          aria-label="Criterion title"
           placeholder="Criterion"
         />
         <input
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+          aria-label="Criterion description"
           placeholder="What earns these points?"
         />
         <input
           value={maxPoints}
           onChange={(event) => setMaxPoints(event.target.value)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+          aria-label="Maximum points"
           placeholder="Pts"
         />
       </div>
       <div className="mt-3 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => void onSave({ title, description, max_points: maxPoints })}
+          onClick={() => onSave({ title, description, max_points: maxPoints })}
           className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
         >
           Save
         </button>
         <button
           type="button"
-          onClick={() => void onDelete()}
+          onClick={() => onDelete()}
           className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
         >
           Delete
@@ -77,19 +82,21 @@ function RubricCriterionEditor({
 
 function RubricQuestionSection({
   group,
+  isBusy,
   onGenerate,
   onCreate,
   onUpdate,
   onDelete,
 }: {
   group: RubricQuestion
-  onGenerate: () => Promise<void>
+  isBusy: boolean
+  onGenerate: () => void
   onCreate: (payload: { title: string; description: string; max_points: string }) => Promise<void>
   onUpdate: (
     criterionId: number,
     payload: { title: string; description: string; max_points: string },
-  ) => Promise<void>
-  onDelete: (criterionId: number) => Promise<void>
+  ) => void
+  onDelete: (criterionId: number) => void
 }) {
   const [newCriterion, setNewCriterion] = useState({
     title: '',
@@ -98,7 +105,10 @@ function RubricQuestionSection({
   })
 
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <fieldset
+      disabled={isBusy}
+      className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-400 uppercase">
@@ -114,7 +124,7 @@ function RubricQuestionSection({
           </span>
           <button
             type="button"
-            onClick={() => void onGenerate()}
+            onClick={() => onGenerate()}
             className="rounded-full border border-slate-300 px-3 py-1 text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
           >
             Generate with AI
@@ -148,6 +158,7 @@ function RubricQuestionSection({
               setNewCriterion((current) => ({ ...current, title: event.target.value }))
             }
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Criterion title"
             placeholder="Criterion"
           />
           <input
@@ -159,6 +170,7 @@ function RubricQuestionSection({
               }))
             }
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Criterion description"
             placeholder="What should be graded?"
           />
           <input
@@ -170,6 +182,7 @@ function RubricQuestionSection({
               }))
             }
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Maximum points"
             placeholder="Pts"
           />
           <button
@@ -180,8 +193,12 @@ function RubricQuestionSection({
               !newCriterion.max_points.trim()
             }
             onClick={async () => {
-              await onCreate(newCriterion)
-              setNewCriterion({ title: '', description: '', max_points: '' })
+              try {
+                await onCreate(newCriterion)
+                setNewCriterion({ title: '', description: '', max_points: '' })
+              } catch {
+                // The parent mutation displays the error; retain the entered criterion.
+              }
             }}
             className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -189,7 +206,7 @@ function RubricQuestionSection({
           </button>
         </div>
       </div>
-    </article>
+    </fieldset>
   )
 }
 
@@ -271,6 +288,18 @@ export function AssignmentRubricPage() {
     return <div className="text-sm text-slate-600">Loading rubric...</div>
   }
 
+  if (assignmentQuery.isError || rubricQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || rubricQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void rubricQuery.refetch()
+        }}
+      />
+    )
+  }
+
   const assignment = assignmentQuery.data
   const rubricGroups = rubricQuery.data ?? []
 
@@ -288,7 +317,7 @@ export function AssignmentRubricPage() {
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Generate rubric criteria from each question and its reference answer, or add the
-            criteria manually. These point allocations will later drive grading.
+            criteria manually. These point allocations guide grading.
           </p>
         </div>
 
@@ -297,15 +326,21 @@ export function AssignmentRubricPage() {
             Workflow step
           </p>
           <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Rubrics are generated per question part and stay fully editable.
+            Set clear grading criteria.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            AI generation depends on reference answers. If the key is missing or generation fails,
+            AI generation depends on reference answers. If an answer is missing or generation fails,
             you can still add criteria manually.
           </p>
           <button
             type="button"
-            onClick={() => void generateMutation.mutateAsync(undefined)}
+            disabled={
+              generateMutation.isPending ||
+              createMutation.isPending ||
+              updateMutation.isPending ||
+              deleteMutation.isPending
+            }
+            onClick={() => generateMutation.mutate(undefined)}
             className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100"
           >
             {generateMutation.isPending ? 'Generating...' : 'Generate all rubric criteria'}
@@ -314,7 +349,10 @@ export function AssignmentRubricPage() {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
           {errorMessage}
         </div>
       ) : null}
@@ -325,8 +363,14 @@ export function AssignmentRubricPage() {
             <RubricQuestionSection
               key={group.question_part_id}
               group={group}
-              onGenerate={async () => {
-                await generateMutation.mutateAsync(group.question_part_id)
+              isBusy={
+                generateMutation.isPending ||
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                deleteMutation.isPending
+              }
+              onGenerate={() => {
+                generateMutation.mutate(group.question_part_id)
               }}
               onCreate={async (payload) => {
                 await createMutation.mutateAsync({
@@ -334,11 +378,11 @@ export function AssignmentRubricPage() {
                   ...payload,
                 })
               }}
-              onUpdate={async (criterionId, payload) => {
-                await updateMutation.mutateAsync({ criterionId, payload })
+              onUpdate={(criterionId, payload) => {
+                updateMutation.mutate({ criterionId, payload })
               }}
-              onDelete={async (criterionId) => {
-                await deleteMutation.mutateAsync(criterionId)
+              onDelete={(criterionId) => {
+                deleteMutation.mutate(criterionId)
               }}
             />
           ))}

@@ -159,7 +159,6 @@ jobs:
           push: true
           tags: |
             ${{ vars.DOCKERHUB_USERNAME }}/graider:sha-${{ github.sha }}
-            ${{ github.ref == 'refs/heads/feat/production-deployment' && format('{0}/graider:preview', vars.DOCKERHUB_USERNAME) || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

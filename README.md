@@ -44,13 +44,13 @@ docker compose up -d
 
 Open [localhost:8000](http://localhost:8000). SQLite data and uploads persist in Docker volumes. `docker compose down` stops the app; adding `--volumes` deletes that local data. To update, run `docker compose pull` followed by `docker compose up -d`.
 
-The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). `preview` follows the deployment branch after passing CI; every merge to `main` publishes a commit tag, and the newest passing merge updates `latest`. Set `GRAIDER_IMAGE_TAG=latest` in `.env` to follow releases. Images support Intel/AMD and Apple Silicon.
+The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). Use `latest` for the current release or `sha-<commit>` for an exact version. CI publishes a commit tag after checks pass; the newest passing merge to `main` updates `latest`. Images support Intel/AMD and Apple Silicon.
 
 ## Deploy on Render
 
 1. Use the published Docker Hub image; GitHub Actions releases new images only after all checks pass.
 2. Create a Neon PostgreSQL database and a private `uploads` bucket on the same branch in AWS US East 2 (Ohio).
-3. In Render, select **New → Web Service → Existing Image** and enter `docker.io/saumyaj1/graider:preview`. Choose **Free**, region **Ohio**, and health check path `/health/`. Leave the Docker command override empty.
+3. In Render, select **New → Web Service → Existing Image** and enter `docker.io/saumyaj1/graider:latest`. Choose **Free**, region **Ohio**, and health check path `/health/`. Leave the Docker command override empty.
 4. Add the environment values below, using **Add from .env** to paste a production-configured dotenv file if preferred, then deploy. [render.yaml](render.yaml) provides the same configuration for Blueprint setup.
 
 | Setting                                                                      | Production value                                                               |

@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
+
 import { getAssignment } from '../api/assignments'
 import { getApiErrorMessage } from '../api/errors'
 import {
@@ -15,15 +18,17 @@ import {
 function ReviewEditor({
   answerPart,
   gradingResult,
+  isBusy,
   onSave,
 }: {
   answerPart?: SubmissionAnswerPart
   gradingResult: GradingResult
+  isBusy: boolean
   onSave: (payload: {
     final_score: string | null
     final_feedback: string
     needs_review: boolean
-  }) => Promise<void>
+  }) => void
 }) {
   const [finalScore, setFinalScore] = useState(gradingResult.final_score ?? '')
   const [finalFeedback, setFinalFeedback] = useState(
@@ -38,7 +43,10 @@ function ReviewEditor({
   }, [gradingResult])
 
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <fieldset
+      disabled={isBusy}
+      className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-400 uppercase">
@@ -112,7 +120,7 @@ function ReviewEditor({
         <button
           type="button"
           onClick={() =>
-            void onSave({
+            onSave({
               final_score: finalScore.trim() ? finalScore : null,
               final_feedback: finalFeedback,
               needs_review: needsReview,
@@ -123,7 +131,7 @@ function ReviewEditor({
           Save review changes
         </button>
       </div>
-    </article>
+    </fieldset>
   )
 }
 
@@ -199,6 +207,18 @@ export function SubmissionReviewPage() {
     return <div className="text-sm text-slate-600">Loading submission review...</div>
   }
 
+  if (assignmentQuery.isError || gradingQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || gradingQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void gradingQuery.refetch()
+        }}
+      />
+    )
+  }
+
   const assignment = assignmentQuery.data
   const submission = grading?.submission
 
@@ -224,7 +244,7 @@ export function SubmissionReviewPage() {
               {assignment.title}
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-              Status: {submission.grading_status.replace('_', ' ')}
+              Status: {formatStatus(submission.grading_status)}
             </span>
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
               Total {submission.total_score ?? 'n/a'}
@@ -237,20 +257,21 @@ export function SubmissionReviewPage() {
             Finalize
           </p>
           <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Lock this student’s result once the review is done.
+            Mark this review complete
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Finalize recalculates the total from the saved final scores and marks this submission
-            ready for export.
+            Finalizing saves the reviewed total and marks this submission complete. You can return
+            to edit the scores and feedback later.
           </p>
           <button
             type="button"
             disabled={
               finalizeMutation.isPending ||
+              updateMutation.isPending ||
               grading.grading_results.length === 0 ||
               submission.grading_status === 'finalized'
             }
-            onClick={() => void finalizeMutation.mutateAsync()}
+            onClick={() => finalizeMutation.mutate()}
             className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submission.grading_status === 'finalized'
@@ -263,7 +284,10 @@ export function SubmissionReviewPage() {
       </section>
 
       {errorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
           {errorMessage}
         </div>
       ) : null}
@@ -280,9 +304,10 @@ export function SubmissionReviewPage() {
             <ReviewEditor
               key={gradingResult.id}
               gradingResult={gradingResult}
+              isBusy={updateMutation.isPending || finalizeMutation.isPending}
               answerPart={answerPartsByQuestionId.get(gradingResult.question_part_id)}
-              onSave={async (payload) => {
-                await updateMutation.mutateAsync({
+              onSave={(payload) => {
+                updateMutation.mutate({
                   gradingResultId: gradingResult.id,
                   payload,
                 })
