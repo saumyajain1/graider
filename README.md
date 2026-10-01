@@ -2,7 +2,7 @@
 
 Graider is a personal project for AI-assisted grading. Teachers create assignments, prepare reference answers and rubrics, grade submissions, and review results before exporting them.
 
-[Try the live demo](https://graider-preview.onrender.com/login). The free server sleeps when idle, so the first visit can take a minute or longer.
+[Try the live demo](https://graider-xt2w.onrender.com/login). The free server sleeps when idle, so the first visit can take a minute or longer.
 
 ## Features
 
