@@ -68,6 +68,10 @@ Enter credentials in Render's environment settings. For dotenv import, use produ
 
 The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. GitHub Actions triggers Render after publishing when its deploy hook is configured below. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
 
+## API documentation
+
+Open [Swagger UI](http://localhost:8000/api/docs/) to explore the API. Sign in to Graider first; **Try it out** uses your browser session and CSRF protection. The specification at `/api/schema/` is generated from the API serializers and views; CI validates it without a separately maintained OpenAPI file.
+
 ## CI/CD
 
 Pull requests run lint, formatting, backend tests, frontend builds, and production/container checks. After a merge to `main`, GitHub Actions builds both image architectures, pushes `saumyaj1/graider:sha-<commit>`, updates `latest` for the newest passing merge, and triggers Render with that exact commit image. Merge builds queue instead of canceling each other.

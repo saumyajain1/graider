@@ -71,6 +71,7 @@ jobs:
         run: |
           python manage.py test --noinput
           python manage.py makemigrations --check --dry-run
+          python manage.py spectacular --validate --fail-on-warn --file /tmp/graider-openapi.yaml
       - name: Collect production assets and check settings
         env:
           DJANGO_DEBUG: 'false'
@@ -104,6 +105,13 @@ jobs:
             --header 'X-Forwarded-Proto: https' http://127.0.0.1:10000/health/
           curl --fail --header 'X-Forwarded-Proto: https' \
             http://127.0.0.1:10000/assignments/123/questions
+          curl --fail --header 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:10000/api/docs/ --output /tmp/graider-docs.html
+          curl --fail --header 'X-Forwarded-Proto: https' --header 'Accept: application/json' \
+            http://127.0.0.1:10000/api/schema/ --output /tmp/graider-schema.json
+          curl --fail --header 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:10000/static/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui-bundle.js \
+            --output /dev/null
           docker exec graider-ci sh -c \
             'test ! -f /app/.env && test ! -f /app/backend/db.sqlite3 && test -f /app/backend/staticfiles/staticfiles.json'
       - name: Check Docker quickstart and persistent local data

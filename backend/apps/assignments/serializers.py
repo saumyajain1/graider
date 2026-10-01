@@ -147,27 +147,27 @@ class AssignmentSerializer(serializers.ModelSerializer):
             instance.save()
         return instance
 
-    def get_source_file_url(self, obj):
+    def get_source_file_url(self, obj) -> str | None:
         return (
             file_api_url("assignment-source-file", assignment_id=obj.id)
             if obj.source_file
             else None
         )
 
-    def get_source_filename(self, obj):
+    def get_source_filename(self, obj) -> str | None:
         return (
             (obj.source_original_filename or obj.source_file.name.split("/")[-1])
             if obj.source_file
             else None
         )
 
-    def get_status(self, obj):
+    def get_status(self, obj) -> str:
         return obj.workflow_status
 
-    def get_question_count(self, obj):
+    def get_question_count(self, obj) -> int:
         return obj.question_parts.filter(part_type=QuestionPart.PartType.QUESTION).count()
 
-    def get_submission_count(self, obj):
+    def get_submission_count(self, obj) -> int:
         submissions = getattr(obj, "submissions", None)
         return submissions.count() if submissions is not None else 0
 
@@ -216,5 +216,13 @@ class QuestionPartSerializer(serializers.ModelSerializer):
             **validated_data,
         )
 
-    def get_display_label(self, obj):
+    def get_display_label(self, obj) -> str:
         return obj.display_label
+
+
+class QuestionGenerateSerializer(serializers.Serializer):
+    replace_existing = serializers.BooleanField(default=True)
+
+
+class QuestionReorderSerializer(serializers.Serializer):
+    question_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)

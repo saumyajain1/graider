@@ -146,14 +146,14 @@ class StudentSubmissionSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
-    def get_response_file_url(self, obj):
+    def get_response_file_url(self, obj) -> str | None:
         return (
             file_api_url("submission-response-file", submission_id=obj.id)
             if obj.response_file
             else None
         )
 
-    def get_response_filename(self, obj):
+    def get_response_filename(self, obj) -> str | None:
         return (
             (obj.response_original_filename or obj.response_file.name.split("/")[-1])
             if obj.response_file
@@ -168,7 +168,7 @@ class SubmissionImportSerializer(serializers.ModelSerializer):
         model = SubmissionImport
         fields = ("id", "original_filename", "source_file_url", "row_count", "created_at")
 
-    def get_source_file_url(self, obj):
+    def get_source_file_url(self, obj) -> str:
         return file_api_url(
             "submission-import-file", assignment_id=obj.assignment_id, import_id=obj.id
         )
@@ -304,3 +304,17 @@ def build_rubric_question_item(question_part: QuestionPart):
             many=True,
         ).data,
     }
+
+
+class TargetQuestionSerializer(serializers.Serializer):
+    question_part_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class SubmissionCsvUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
+class GradeAllResultSerializer(serializers.Serializer):
+    graded_count = serializers.IntegerField()
+    failed_count = serializers.IntegerField()
+    submissions = StudentSubmissionSerializer(many=True)

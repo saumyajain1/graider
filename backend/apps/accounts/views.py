@@ -1,15 +1,26 @@
 from django.contrib.auth import login, logout
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
+from drf_spectacular.utils import extend_schema_view
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from config.schema import APIErrorSerializer, api_schema
 
 from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
 from .throttles import IPScopedRateThrottle
 
 
 @method_decorator(csrf_protect, name="dispatch")
+@extend_schema_view(
+    post=api_schema(
+        request=RegisterSerializer,
+        response=UserSerializer,
+        code=201,
+        errors={429: APIErrorSerializer},
+    ),
+)
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [IPScopedRateThrottle]
@@ -24,6 +35,11 @@ class RegisterView(APIView):
 
 
 @method_decorator(csrf_protect, name="dispatch")
+@extend_schema_view(
+    post=api_schema(
+        request=LoginSerializer, response=UserSerializer, errors={429: APIErrorSerializer}
+    ),
+)
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [IPScopedRateThrottle]
@@ -38,6 +54,9 @@ class LoginView(APIView):
 
 
 @method_decorator(csrf_protect, name="dispatch")
+@extend_schema_view(
+    post=api_schema(code=204),
+)
 class LogoutView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -48,6 +67,11 @@ class LogoutView(APIView):
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
+@extend_schema_view(
+    get=api_schema(
+        response=UserSerializer, errors={401: APIErrorSerializer, 429: APIErrorSerializer}
+    ),
+)
 class MeView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [IPScopedRateThrottle]

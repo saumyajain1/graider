@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_view
 from rest_framework import permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -15,9 +17,16 @@ from apps.grading.services import (
 from apps.grading.services.openai_client import LLMSpendLimitError, public_llm_error
 from apps.grading.services.usage import LLMQuotaExceeded
 from apps.uploads import delete_upload_after_commit, private_file_response
+from config.schema import api_schema
 
 from .models import Assignment, QuestionPart
-from .serializers import AssignmentSerializer, QuestionPartSerializer, build_part_key
+from .serializers import (
+    AssignmentSerializer,
+    QuestionGenerateSerializer,
+    QuestionPartSerializer,
+    QuestionReorderSerializer,
+    build_part_key,
+)
 
 
 def normalize_question_order(assignment):
@@ -45,6 +54,10 @@ class TeacherScopedView(APIView):
         )
 
 
+@extend_schema_view(
+    get=api_schema(response=AssignmentSerializer(many=True)),
+    post=api_schema(request=AssignmentSerializer, response=AssignmentSerializer, code=201),
+)
 class AssignmentListCreateView(TeacherScopedView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -63,6 +76,11 @@ class AssignmentListCreateView(TeacherScopedView):
         )
 
 
+@extend_schema_view(
+    get=api_schema(response=AssignmentSerializer),
+    patch=api_schema(request=AssignmentSerializer, response=AssignmentSerializer),
+    delete=api_schema(code=204),
+)
 class AssignmentDetailView(TeacherScopedView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -95,6 +113,14 @@ class AssignmentDetailView(TeacherScopedView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema_view(
+    get=api_schema(
+        response={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            (200, "text/plain"): OpenApiTypes.BINARY,
+        }
+    ),
+)
 class AssignmentSourceFileView(TeacherScopedView):
     def get(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
@@ -104,6 +130,10 @@ class AssignmentSourceFileView(TeacherScopedView):
         return private_file_response(assignment.source_file, filename)
 
 
+@extend_schema_view(
+    get=api_schema(response=QuestionPartSerializer(many=True)),
+    post=api_schema(request=QuestionPartSerializer, response=QuestionPartSerializer, code=201),
+)
 class QuestionListCreateView(TeacherScopedView):
     parser_classes = [JSONParser]
 
@@ -123,12 +153,19 @@ class QuestionListCreateView(TeacherScopedView):
         return Response(QuestionPartSerializer(question).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    post=api_schema(
+        request=QuestionGenerateSerializer, response=QuestionPartSerializer(many=True), ai=True
+    ),
+)
 class QuestionGenerateView(TeacherScopedView):
     parser_classes = [JSONParser]
 
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        replace_existing = request.data.get("replace_existing", True)
+        serializer = QuestionGenerateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        replace_existing = serializer.validated_data["replace_existing"]
 
         if not assignment.raw_assignment_text.strip():
             return Response(
@@ -186,6 +223,10 @@ class QuestionGenerateView(TeacherScopedView):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    patch=api_schema(request=QuestionPartSerializer, response=QuestionPartSerializer),
+    delete=api_schema(code=204),
+)
 class QuestionDetailView(TeacherScopedView):
     parser_classes = [JSONParser]
 
@@ -204,18 +245,17 @@ class QuestionDetailView(TeacherScopedView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema_view(
+    post=api_schema(request=QuestionReorderSerializer, response=QuestionPartSerializer(many=True)),
+)
 class QuestionReorderView(TeacherScopedView):
     parser_classes = [JSONParser]
 
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        question_ids = request.data.get("question_ids")
-
-        if not isinstance(question_ids, list) or not question_ids:
-            return Response(
-                {"detail": "question_ids must be a non-empty list."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer = QuestionReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        question_ids = serializer.validated_data["question_ids"]
 
         existing_ids = list(assignment.question_parts.values_list("id", flat=True))
         if sorted(question_ids) != sorted(existing_ids):

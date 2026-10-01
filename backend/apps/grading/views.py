@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_view
 from rest_framework import permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -18,6 +20,7 @@ from apps.uploads import (
     private_file_response,
     stored_upload,
 )
+from config.schema import APIErrorSerializer, api_schema
 
 from .models import (
     GradingResult,
@@ -27,6 +30,7 @@ from .models import (
     SubmissionImport,
 )
 from .serializers import (
+    GradeAllResultSerializer,
     GradingResultReviewSerializer,
     GradingResultSerializer,
     ReferenceAnswerCreateSerializer,
@@ -38,8 +42,10 @@ from .serializers import (
     RubricQuestionSerializer,
     StudentSubmissionSerializer,
     SubmissionCreateSerializer,
+    SubmissionCsvUploadSerializer,
     SubmissionGradingSerializer,
     SubmissionImportSerializer,
+    TargetQuestionSerializer,
     build_reference_answer_item,
     build_rubric_question_item,
 )
@@ -144,6 +150,12 @@ class TeacherScopedArtifactView(APIView):
         return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
+@extend_schema_view(
+    get=api_schema(response=ReferenceAnswerItemSerializer(many=True)),
+    post=api_schema(
+        request=ReferenceAnswerCreateSerializer, response=ReferenceAnswerItemSerializer, code=201
+    ),
+)
 class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
     def get(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
@@ -181,10 +193,17 @@ class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
         return Response(ReferenceAnswerItemSerializer(item).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    post=api_schema(
+        request=TargetQuestionSerializer, response=ReferenceAnswerItemSerializer(many=True), ai=True
+    ),
+)
 class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        target_question_id = request.data.get("question_part_id")
+        serializer = TargetQuestionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_question_id = serializer.validated_data.get("question_part_id")
         questions = question_queryset_for_assignment(assignment)
         if target_question_id is not None:
             questions = questions.filter(id=target_question_id)
@@ -221,6 +240,11 @@ class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
         return Response(ReferenceAnswerItemSerializer(items, many=True).data)
 
 
+@extend_schema_view(
+    patch=api_schema(
+        request=ReferenceAnswerWriteSerializer, response=ReferenceAnswerItemSerializer
+    ),
+)
 class ReferenceAnswerDetailView(TeacherScopedArtifactView):
     def patch(self, request, reference_answer_id):
         reference_answer = self.get_reference_answer(reference_answer_id)
@@ -236,6 +260,14 @@ class ReferenceAnswerDetailView(TeacherScopedArtifactView):
         return Response(ReferenceAnswerItemSerializer(item).data)
 
 
+@extend_schema_view(
+    get=api_schema(response=RubricQuestionSerializer(many=True)),
+    post=api_schema(
+        request=RubricCriterionCreateSerializer,
+        response=RubricCriterionResponseSerializer,
+        code=201,
+    ),
+)
 class RubricListCreateView(TeacherScopedArtifactView):
     def get(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
@@ -269,10 +301,17 @@ class RubricListCreateView(TeacherScopedArtifactView):
         )
 
 
+@extend_schema_view(
+    post=api_schema(
+        request=TargetQuestionSerializer, response=RubricQuestionSerializer(many=True), ai=True
+    ),
+)
 class RubricGenerateView(TeacherScopedArtifactView):
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        target_question_id = request.data.get("question_part_id")
+        serializer = TargetQuestionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_question_id = serializer.validated_data.get("question_part_id")
         questions = question_queryset_for_assignment(assignment).select_related("reference_answer")
         if target_question_id is not None:
             questions = questions.filter(id=target_question_id)
@@ -324,6 +363,12 @@ class RubricGenerateView(TeacherScopedArtifactView):
         return Response(RubricQuestionSerializer(generated_questions, many=True).data)
 
 
+@extend_schema_view(
+    patch=api_schema(
+        request=RubricCriterionWriteSerializer, response=RubricCriterionResponseSerializer
+    ),
+    delete=api_schema(code=204),
+)
 class RubricCriterionDetailView(TeacherScopedArtifactView):
     def patch(self, request, criterion_id):
         criterion = self.get_rubric_criterion(criterion_id)
@@ -340,6 +385,12 @@ class RubricCriterionDetailView(TeacherScopedArtifactView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema_view(
+    get=api_schema(response=StudentSubmissionSerializer(many=True)),
+    post=api_schema(
+        request=SubmissionCreateSerializer, response=StudentSubmissionSerializer, code=201
+    ),
+)
 class SubmissionListCreateView(TeacherScopedArtifactView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -400,18 +451,21 @@ class SubmissionListCreateView(TeacherScopedArtifactView):
         )
 
 
+@extend_schema_view(
+    post=api_schema(
+        request=SubmissionCsvUploadSerializer,
+        response=StudentSubmissionSerializer(many=True),
+        code=201,
+    ),
+)
 class SubmissionImportCsvView(TeacherScopedArtifactView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        uploaded_file = request.FILES.get("file")
-        if uploaded_file is None:
-            return Response(
-                {"detail": "Upload a CSV file in the file field."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        serializer = SubmissionCsvUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded_file = serializer.validated_data["file"]
         try:
             submissions = parse_submissions_csv(assignment, uploaded_file)
         except CsvImportError as exc:
@@ -434,12 +488,18 @@ class SubmissionImportCsvView(TeacherScopedArtifactView):
         )
 
 
+@extend_schema_view(
+    get=api_schema(response=SubmissionImportSerializer(many=True)),
+)
 class SubmissionImportListView(TeacherScopedArtifactView):
     def get(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
         return Response(SubmissionImportSerializer(assignment.csv_imports.all(), many=True).data)
 
 
+@extend_schema_view(
+    get=api_schema(response={(200, "text/csv"): OpenApiTypes.BINARY}),
+)
 class SubmissionImportFileView(TeacherScopedArtifactView):
     def get(self, request, assignment_id, import_id):
         assignment = self.get_assignment(assignment_id)
@@ -447,12 +507,23 @@ class SubmissionImportFileView(TeacherScopedArtifactView):
         return private_file_response(csv_import.source_file, csv_import.original_filename)
 
 
+@extend_schema_view(
+    get=api_schema(response=StudentSubmissionSerializer),
+)
 class SubmissionDetailView(TeacherScopedArtifactView):
     def get(self, request, submission_id):
         submission = self.get_submission(submission_id)
         return Response(StudentSubmissionSerializer(submission).data)
 
 
+@extend_schema_view(
+    get=api_schema(
+        response={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            (200, "text/plain"): OpenApiTypes.BINARY,
+        }
+    ),
+)
 class SubmissionResponseFileView(TeacherScopedArtifactView):
     def get(self, request, submission_id):
         submission = self.get_submission(submission_id)
@@ -463,6 +534,11 @@ class SubmissionResponseFileView(TeacherScopedArtifactView):
         return private_file_response(submission.response_file, filename)
 
 
+@extend_schema_view(
+    post=api_schema(
+        response=StudentSubmissionSerializer, ai=True, errors={409: APIErrorSerializer}
+    ),
+)
 class SubmissionGradeView(TeacherScopedArtifactView):
     def post(self, request, submission_id):
         submission = self.get_submission(submission_id)
@@ -480,6 +556,9 @@ class SubmissionGradeView(TeacherScopedArtifactView):
         return Response(StudentSubmissionSerializer(submission).data)
 
 
+@extend_schema_view(
+    post=api_schema(response=GradeAllResultSerializer, ai=True, errors={409: APIErrorSerializer}),
+)
 class AssignmentGradeAllView(TeacherScopedArtifactView):
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
@@ -525,16 +604,19 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
                 failed += 1
 
         return Response(
-            {
-                "graded_count": graded,
-                "failed_count": failed,
-                "submissions": StudentSubmissionSerializer(
-                    assignment.submissions.all(), many=True
-                ).data,
-            }
+            GradeAllResultSerializer(
+                {
+                    "graded_count": graded,
+                    "failed_count": failed,
+                    "submissions": assignment.submissions.all(),
+                }
+            ).data
         )
 
 
+@extend_schema_view(
+    get=api_schema(response=SubmissionGradingSerializer),
+)
 class SubmissionGradingView(TeacherScopedArtifactView):
     def get(self, request, submission_id):
         submission = self.get_submission(submission_id)
@@ -542,6 +624,9 @@ class SubmissionGradingView(TeacherScopedArtifactView):
         return Response(SubmissionGradingSerializer(payload).data)
 
 
+@extend_schema_view(
+    patch=api_schema(request=GradingResultReviewSerializer, response=GradingResultSerializer),
+)
 class GradingResultDetailView(TeacherScopedArtifactView):
     def patch(self, request, grading_result_id):
         grading_result = self.get_grading_result(grading_result_id)
@@ -555,6 +640,9 @@ class GradingResultDetailView(TeacherScopedArtifactView):
         return Response(GradingResultSerializer(grading_result).data)
 
 
+@extend_schema_view(
+    post=api_schema(response=StudentSubmissionSerializer),
+)
 class SubmissionFinalizeView(TeacherScopedArtifactView):
     def post(self, request, submission_id):
         submission = self.get_submission(submission_id)
@@ -562,6 +650,9 @@ class SubmissionFinalizeView(TeacherScopedArtifactView):
         return Response(StudentSubmissionSerializer(submission).data)
 
 
+@extend_schema_view(
+    get=api_schema(response={(200, "text/csv"): OpenApiTypes.BINARY}),
+)
 class AssignmentExportCsvView(TeacherScopedArtifactView):
     def get(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
