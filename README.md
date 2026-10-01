@@ -2,6 +2,8 @@
 
 Graider is a personal project for AI-assisted grading. Teachers create assignments, prepare reference answers and rubrics, grade submissions, and review results before exporting them.
 
+[Try the live demo](https://graider-preview.onrender.com/login). The free server sleeps when idle, so the first visit can take a minute or longer.
+
 ## Features
 
 - Create assignments from pasted text, TXT files, or PDFs.
@@ -44,8 +46,8 @@ The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). 
 
 1. Use the published Docker Hub image; GitHub Actions releases new images only after all checks pass.
 2. Create a Neon PostgreSQL database and a private `uploads` bucket on the same branch in AWS US East 2 (Ohio).
-3. In Render, create a **Blueprint** from `feat/production-deployment` using [render.yaml](render.yaml). It defines a free web service in Ohio that pulls the published image.
-4. Supply the environment values below and deploy.
+3. In Render, select **New → Web Service → Existing Image** and enter `docker.io/saumyaj1/graider:preview`. Choose **Free**, region **Ohio**, and health check path `/health/`. Leave the Docker command override empty.
+4. Add the environment values below, using **Add from .env** to paste a production-configured dotenv file if preferred, then deploy. [render.yaml](render.yaml) provides the same configuration for Blueprint setup.
 
 | Setting                                                                      | Production value                                                               |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -58,7 +60,7 @@ The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). 
 | `OPENAI_API_KEY`                                                             | A dedicated OpenAI project key                                                 |
 | `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for this same-origin deployment                                          |
 
-Enter credentials in Render's environment settings; do not upload `.env`. Set a monthly spend cap for the OpenAI project. [.env.example](.env.example) lists optional model, reasoning, upload, token quota, and server overrides.
+Enter credentials in Render's environment settings. For dotenv import, use production values from the table rather than the local development defaults; quoted values are supported. Keep credential files out of Git. Set a monthly spend cap for the OpenAI project. [.env.example](.env.example) lists optional model, reasoning, upload, token quota, and server overrides.
 
 The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. GitHub Actions triggers Render after publishing when its deploy hook is configured below. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
 
