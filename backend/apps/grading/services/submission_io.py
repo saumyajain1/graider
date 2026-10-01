@@ -1,4 +1,5 @@
 import csv
+import logging
 from io import StringIO
 
 from django.conf import settings
@@ -8,6 +9,8 @@ from apps.uploads import UploadTooLarge, check_file_size, check_text_length
 
 from ..models import StudentSubmission
 from .submission_workflow import question_queryset_for_assignment
+
+logger = logging.getLogger(__name__)
 
 
 class CsvImportError(ValueError):
@@ -23,8 +26,13 @@ def parse_submissions_csv(assignment, uploaded_file):
     except UnicodeDecodeError as exc:
         raise CsvImportError("CSV must be UTF-8 encoded.") from exc
 
-    reader = csv.DictReader(StringIO(content))
-    fieldnames = reader.fieldnames or []
+    try:
+        reader = csv.DictReader(StringIO(content))
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+    except csv.Error as exc:
+        logger.exception("Submission CSV parsing failed")
+        raise CsvImportError("CSV could not be read. Check its format and try again.") from exc
     if "student_name" not in fieldnames:
         raise CsvImportError("CSV must include a student_name column.")
 
@@ -40,10 +48,6 @@ def parse_submissions_csv(assignment, uploaded_file):
         raise CsvImportError("CSV must include response_text or raw_response_text.")
 
     identifier_field = "student_identifier" if "student_identifier" in fieldnames else "student_id"
-    try:
-        rows = list(reader)
-    except csv.Error as exc:
-        raise CsvImportError(f"CSV could not be parsed: {exc}") from exc
     if len(rows) > settings.GRAIDER_MAX_CSV_ROWS:
         raise UploadTooLarge(f"CSV exceeds the {settings.GRAIDER_MAX_CSV_ROWS}-row limit.")
 

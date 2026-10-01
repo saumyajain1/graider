@@ -1,16 +1,21 @@
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from types import SimpleNamespace
+from unittest import skipUnless
 from unittest.mock import Mock, patch
 
 import httpx
-from django.db import connection
-from django.test import TestCase, override_settings
+from django.db import connection, connections
+from django.test import TestCase, TransactionTestCase, override_settings
 from openai import APITimeoutError, RateLimitError
 from pydantic import BaseModel
 
 from apps.accounts.models import User
 
-from .models import LLMUsage
+from .models import LLMQuotaLock, LLMUsage
+from .services import usage as usage_service
 from .services.openai_client import (
     LLMConfigurationError,
     LLMGenerationError,
@@ -275,3 +280,77 @@ class LLMUsageTests(TestCase):
             self.make_request()
         self.provider_parse.assert_not_called()
         self.assertFalse(LLMUsage.objects.exists())
+
+
+@skipUnless(connection.vendor == "postgresql", "Concurrent row locks require PostgreSQL.")
+@override_settings(
+    GRAIDER_USER_DAILY_TOKENS=500,
+    GRAIDER_USER_MONTHLY_TOKENS=500,
+    GRAIDER_GLOBAL_MONTHLY_TOKENS=1000,
+    GRAIDER_USER_AI_REQUESTS_PER_MINUTE=40,
+)
+class ConcurrentQuotaTests(TransactionTestCase):
+    def setUp(self):
+        LLMQuotaLock.objects.get_or_create(pk=1)
+        self.users = [
+            User.objects.create_user(email=f"race-{index}@example.com", full_name="Teacher")
+            for index in range(2)
+        ]
+
+    def reserve_simultaneously(self, users, estimated_tokens=51):
+        start = Barrier(2)
+        charged_tokens = usage_service._charged_tokens
+
+        def slow_quota_read(queryset):
+            total = charged_tokens(queryset)
+            # Give the competing connection time to read the same allowance if the
+            # row lock is removed. These remain real PostgreSQL queries.
+            time.sleep(0.05)
+            return total
+
+        def request(user):
+            try:
+                start.wait(timeout=10)
+                reserve_usage(
+                    user=user,
+                    operation="answer_mapping",
+                    model="gpt-6-luna",
+                    estimated_tokens=estimated_tokens,
+                )
+                return "reserved"
+            except LLMQuotaExceeded:
+                return "denied"
+            finally:
+                connections.close_all()
+
+        with (
+            patch.object(usage_service, "_charged_tokens", side_effect=slow_quota_read),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            futures = [pool.submit(request, user) for user in users]
+            return sorted(future.result(timeout=10) for future in futures)
+
+    @override_settings(GRAIDER_USER_DAILY_TOKENS=100)
+    def test_simultaneous_requests_cannot_exceed_one_users_daily_budget(self):
+        self.assertEqual(self.reserve_simultaneously([self.users[0]] * 2), ["denied", "reserved"])
+        self.assertEqual(LLMUsage.objects.count(), 1)
+        self.assertEqual(LLMUsage.objects.get().reserved_tokens, 51)
+
+    @override_settings(GRAIDER_GLOBAL_MONTHLY_TOKENS=100)
+    def test_different_users_cannot_exceed_global_budget_concurrently(self):
+        self.assertEqual(self.reserve_simultaneously(self.users), ["denied", "reserved"])
+        self.assertEqual(LLMUsage.objects.count(), 1)
+
+    @override_settings(GRAIDER_USER_AI_REQUESTS_PER_MINUTE=1)
+    def test_simultaneous_requests_cannot_bypass_burst_limit(self):
+        self.assertEqual(self.reserve_simultaneously([self.users[0]] * 2), ["denied", "reserved"])
+        self.assertEqual(LLMUsage.objects.count(), 1)
+
+    @override_settings(GRAIDER_USER_DAILY_TOKENS=100, GRAIDER_GLOBAL_MONTHLY_TOKENS=100)
+    def test_concurrent_reservations_can_reach_exact_budget_boundary(self):
+        self.assertEqual(
+            self.reserve_simultaneously([self.users[0]] * 2, estimated_tokens=50),
+            ["reserved", "reserved"],
+        )
+        self.assertEqual(LLMUsage.objects.count(), 2)
+        self.assertEqual(sum(LLMUsage.objects.values_list("reserved_tokens", flat=True)), 100)

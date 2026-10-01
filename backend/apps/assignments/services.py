@@ -1,3 +1,4 @@
+import logging
 import re
 import unicodedata
 
@@ -5,6 +6,8 @@ from django.conf import settings
 from pypdf import PdfReader
 
 from apps.uploads import UploadTooLarge, check_file_size, check_text_length
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_TEXT_UPLOAD_EXTENSIONS = (".txt", ".pdf")
 
@@ -119,9 +122,10 @@ def extract_text_from_uploaded_file(uploaded_file, *, max_chars=None):
         except UploadTooLarge:
             uploaded_file.seek(0)
             raise
-        except Exception as exc:  # pragma: no cover - defensive fallback
+        except Exception:
+            logger.exception("PDF text extraction failed")
             uploaded_file.seek(0)
-            return "", f"PDF extraction failed: {exc}"
+            return "", "PDF text could not be read. Try a text-based PDF or paste the text instead."
 
     return "", "Only .txt and .pdf files are supported for assignment uploads."
 

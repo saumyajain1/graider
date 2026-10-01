@@ -11,7 +11,7 @@ Graider is a personal project for AI-assisted grading. Teachers create assignmen
 - Add student submissions individually or import a CSV; review scores and feedback before finalizing.
 - Keep original uploads private, restrict access to their teacher, and enforce upload and AI token limits.
 
-Built with session authentication and CSRF protection, persistent file storage, and CI covering 85 backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
+Built with session authentication and CSRF protection, persistent file storage, and CI covering backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
 
 ## Tech stack
 
@@ -20,6 +20,10 @@ Built with session authentication and CSRF protection, persistent file storage, 
 - **Data:** SQLite and local files for development; Neon PostgreSQL and private Object Storage in production.
 - **AI:** OpenAI SDK; GPT-6 Luna by default, configurable per task.
 - **Hosting:** one Docker web service on Render for the frontend and API.
+
+## Architecture
+
+Render serves the React app and Django API from one URL. Django stores assignments and grading results in Neon PostgreSQL, original uploads in a private Neon bucket, and calls OpenAI for AI tasks. Upload limits and per-user/global token quotas bound usage; an enforced OpenAI project spend cap limits monthly AI cost.
 
 ## Run locally with Docker
 
@@ -60,7 +64,7 @@ The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). 
 | `OPENAI_API_KEY`                                                             | A dedicated OpenAI project key                                                 |
 | `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for this same-origin deployment                                          |
 
-Enter credentials in Render's environment settings. For dotenv import, use production values from the table rather than the local development defaults; quoted values are supported. Keep credential files out of Git. Set a monthly spend cap for the OpenAI project. [.env.example](.env.example) lists optional model, reasoning, upload, token quota, and server overrides.
+Enter credentials in Render's environment settings. For dotenv import, use production values from the table rather than the local development defaults; quoted values are supported. Keep credential files out of Git. In OpenAI **Project settings → Limits → Spend → Edit spend limit**, set a monthly amount and enable **Enforce a hard limit**; alerts alone do not cap spending. Restrict project model access to the models configured in [.env.example](.env.example), which also lists reasoning, upload, token quota, and server overrides.
 
 The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. GitHub Actions triggers Render after publishing when its deploy hook is configured below. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
 

@@ -1,3 +1,4 @@
+import csv
 from io import BytesIO
 from unittest.mock import patch
 
@@ -162,6 +163,61 @@ class PrivateUploadTests(APITestCase):
         )
         self.assertEqual(response.status_code, 413)
         self.assertEqual(Assignment.objects.count(), 0)
+
+    @patch("apps.assignments.services.PdfReader", side_effect=ValueError("internal parser detail"))
+    def test_pdf_parser_failure_is_safe_for_assignment_and_submission(self, reader):
+        assignment = self.make_assignment()
+        requests = (
+            (reverse("assignment-list"), "source_file", {"title": "Broken PDF"}),
+            (
+                reverse("submission-list", args=[assignment.id]),
+                "response_file",
+                {"student_name": "Alex"},
+            ),
+        )
+        for url, field, data in requests:
+            with (
+                self.subTest(url=url),
+                self.assertLogs("apps.assignments.services", level="ERROR"),
+                patch.object(default_storage, "save") as save,
+            ):
+                response = self.client.post(
+                    url,
+                    {**data, field: SimpleUploadedFile("broken.pdf", b"invalid")},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("PDF text could not be read", str(response.data))
+                self.assertNotIn("internal parser detail", str(response.data))
+                save.assert_not_called()
+        self.assertEqual(Assignment.objects.count(), 1)
+        self.assertFalse(StudentSubmission.objects.exists())
+
+    def test_csv_parser_errors_in_header_or_rows_are_safe_and_not_stored(self):
+        assignment = self.make_assignment()
+        oversized_field = b"a" * (csv.field_size_limit() + 1)
+        for content in (
+            oversized_field + b"\n",
+            b"student_name,response_text\nAlex," + oversized_field + b"\n",
+        ):
+            with (
+                self.subTest(content_length=len(content)),
+                self.assertLogs("apps.grading.services.submission_io", level="ERROR"),
+                patch.object(default_storage, "save") as save,
+            ):
+                response = self.client.post(
+                    reverse("submission-import-csv", args=[assignment.id]),
+                    {"file": SimpleUploadedFile("broken.csv", content)},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.data["detail"],
+                    "CSV could not be read. Check its format and try again.",
+                )
+                save.assert_not_called()
+        self.assertFalse(SubmissionImport.objects.exists())
+        self.assertFalse(StudentSubmission.objects.exists())
 
     @override_settings(GRAIDER_MAX_ASSIGNMENT_CHARS=5)
     def test_assignment_text_limit_returns_413(self):
