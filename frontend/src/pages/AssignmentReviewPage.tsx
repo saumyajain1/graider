@@ -126,7 +126,11 @@ export function AssignmentReviewPage() {
                   {submission.total_score ? `${submission.total_score} total` : 'Not graded'}
                 </span>
                 <span className="rounded-full bg-slate-100 px-3 py-1">
-                  {submission.upload_source === 'csv' ? 'CSV import' : 'Manual entry'}
+                  {submission.upload_source === 'csv'
+                    ? 'CSV import'
+                    : submission.upload_source === 'file'
+                      ? 'Uploaded file'
+                      : 'Manual entry'}
                 </span>
               </div>
 
