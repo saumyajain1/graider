@@ -119,7 +119,7 @@ export function AssignmentOverviewPage() {
   return (
     <WorkflowDraftProvider value={drafts}>
       <div className="space-y-8">
-        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="space-y-6">
           <div className="rounded-[2rem] border border-slate-200 p-6">
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700">
@@ -160,30 +160,6 @@ export function AssignmentOverviewPage() {
                 </a>
               </div>
             ) : null}
-          </div>
-
-          <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
-            <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
-              Next step
-            </p>
-            <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-              Set up your questions.
-            </h2>
-            <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-              Generate questions from your assignment text or add them manually. Check their order
-              and marks, then build the reference answers and rubric.
-            </p>
-            <WorkflowContinue
-              to={`/assignments/${assignment.id}/questions`}
-              disabled={
-                drafts.isSaving ||
-                updateMutation.isPending ||
-                regenerateMutation.isPending ||
-                deleteMutation.isPending
-              }
-            >
-              questions
-            </WorkflowContinue>
           </div>
         </section>
 
@@ -239,7 +215,7 @@ export function AssignmentOverviewPage() {
               />
             </label>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-[0.8fr_1.2fr]">
+            <div className="mt-4 space-y-4">
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">
                   Replace source file
@@ -340,17 +316,6 @@ export function AssignmentOverviewPage() {
                   ? 'Saving and regenerating...'
                   : 'Overwrite questions from current file/text'}
               </AIButton>
-              <WorkflowContinue
-                to={`/assignments/${assignment.id}/questions`}
-                disabled={
-                  drafts.isSaving ||
-                  updateMutation.isPending ||
-                  regenerateMutation.isPending ||
-                  deleteMutation.isPending
-                }
-              >
-                questions
-              </WorkflowContinue>
               <button
                 type="button"
                 disabled={
@@ -374,7 +339,20 @@ export function AssignmentOverviewPage() {
             </div>
           </fieldset>
         </form>
-        <WorkflowBack to="/">Back to dashboard</WorkflowBack>
+        <div className="flex flex-wrap gap-3">
+          <WorkflowBack to="/">Back to dashboard</WorkflowBack>
+          <WorkflowContinue
+            to={`/assignments/${assignment.id}/questions`}
+            disabled={
+              drafts.isSaving ||
+              updateMutation.isPending ||
+              regenerateMutation.isPending ||
+              deleteMutation.isPending
+            }
+          >
+            questions
+          </WorkflowContinue>
+        </div>
       </div>
     </WorkflowDraftProvider>
   )

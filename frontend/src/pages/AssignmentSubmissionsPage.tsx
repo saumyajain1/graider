@@ -19,23 +19,8 @@ import { AIButton } from '../components/AIButton'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
 import { WorkflowDraftProvider, useDraft, useDraftSaves } from '../hooks/useDraftSaves'
-import { formatStatus } from '../lib/format'
+import { SubmissionTable } from '../components/SubmissionTable'
 import { marksInCents } from '../lib/marks'
-
-function getStatusTone(status: StudentSubmission['grading_status']) {
-  switch (status) {
-    case 'graded':
-    case 'reviewed':
-    case 'finalized':
-      return 'bg-emerald-50 text-emerald-700'
-    case 'failed':
-      return 'bg-rose-50 text-rose-700'
-    case 'grading':
-      return 'bg-amber-50 text-amber-700'
-    default:
-      return 'bg-slate-100 text-slate-600'
-  }
-}
 
 function getGradeActionLabel(status: StudentSubmission['grading_status']) {
   if (status === 'grading') {
@@ -593,110 +578,34 @@ export function AssignmentSubmissionsPage() {
             </div>
           </div>
 
-          {submissions.length > 0 ? (
-            <div className="mt-5 space-y-3">
-              {submissions.map((submission) => {
-                const isMutatingThisRow =
-                  gradeMutation.isPending && gradeMutation.variables === submission.id
-
+          <div className="mt-5">
+            <SubmissionTable
+              submissions={submissions}
+              assignmentId={assignment.id}
+              gradeAction={(submission) => {
+                const busy =
+                  (gradeMutation.isPending && gradeMutation.variables === submission.id) ||
+                  submission.grading_status === 'grading'
                 return (
-                  <article
-                    key={submission.id}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  <AIButton
+                    busy={busy}
+                    disabled={
+                      drafts.isSaving ||
+                      createMutation.isPending ||
+                      importMutation.isPending ||
+                      !gradingReady ||
+                      gradeMutation.isPending ||
+                      gradeAllMutation.isPending ||
+                      submission.grading_status === 'grading'
+                    }
+                    onClick={() => gradeMutation.mutate(submission.id)}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-950">
-                          {submission.student_name}
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {submission.student_identifier
-                            ? `ID ${submission.student_identifier}`
-                            : 'No identifier'}
-                          {' · '}
-                          {submission.upload_source === 'csv'
-                            ? 'Imported via CSV'
-                            : submission.upload_source === 'file'
-                              ? 'Uploaded file'
-                              : 'Added manually'}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-                        <span
-                          className={`rounded-full px-3 py-1 ${getStatusTone(submission.grading_status)}`}
-                        >
-                          {formatStatus(submission.grading_status)}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-                          {submission.total_score !== null
-                            ? `${submission.total_score} total`
-                            : 'Not graded'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">
-                      {submission.raw_response_text || 'No raw response text stored yet.'}
-                    </p>
-
-                    {submission.response_filename ? (
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                        Source file:{' '}
-                        <a
-                          href={submission.response_file_url ?? undefined}
-                          className="text-fuchsia-700 underline"
-                        >
-                          {submission.response_filename}
-                        </a>
-                      </div>
-                    ) : null}
-
-                    {submission.ingestion_notes ? (
-                      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        {submission.ingestion_notes}
-                      </div>
-                    ) : null}
-
-                    {submission.last_error ? (
-                      <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                        {submission.last_error}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <AIButton
-                        busy={isMutatingThisRow || submission.grading_status === 'grading'}
-                        disabled={
-                          drafts.isSaving ||
-                          createMutation.isPending ||
-                          importMutation.isPending ||
-                          !gradingReady ||
-                          submission.grading_status === 'grading' ||
-                          gradeMutation.isPending ||
-                          gradeAllMutation.isPending
-                        }
-                        onClick={() => gradeMutation.mutate(submission.id)}
-                      >
-                        {isMutatingThisRow
-                          ? 'Grading...'
-                          : getGradeActionLabel(submission.grading_status)}
-                      </AIButton>
-                      <Link
-                        to={`/assignments/${assignment.id}/review/${submission.id}`}
-                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-500 transition hover:border-slate-950 hover:text-slate-950"
-                      >
-                        Open review
-                      </Link>
-                    </div>
-                  </article>
+                    {busy ? 'Grading…' : getGradeActionLabel(submission.grading_status)}
+                  </AIButton>
                 )
-              })}
-            </div>
-          ) : (
-            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-600">
-              No submissions yet. Add one manually or import a CSV to start grading.
-            </div>
-          )}
+              }}
+            />
+          </div>
         </section>
 
         <div className="flex flex-wrap gap-3">

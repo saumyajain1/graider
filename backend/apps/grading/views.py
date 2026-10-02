@@ -45,6 +45,7 @@ from .serializers import (
     SubmissionCsvUploadSerializer,
     SubmissionGradingSerializer,
     SubmissionImportSerializer,
+    SubmissionQuestionReviewSerializer,
     TargetQuestionSerializer,
     build_reference_answer_item,
     build_rubric_question_item,
@@ -81,10 +82,17 @@ def normalize_rubric_order(question_part):
 
 
 def serialize_submission_grading(submission):
+    questions = list(
+        question_queryset_for_assignment(submission.assignment)
+        .select_related("reference_answer")
+        .prefetch_related("rubric_criteria")
+    )
     return {
         "submission": submission,
         "answer_parts": submission.answer_parts.all(),
         "grading_results": submission.grading_results.all(),
+        "questions": [build_rubric_question_item(question) for question in questions],
+        "reference_answers": [build_reference_answer_item(question) for question in questions],
     }
 
 
@@ -627,6 +635,11 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
 
 @extend_schema_view(
     get=api_schema(response=SubmissionGradingSerializer),
+    patch=api_schema(
+        request=SubmissionQuestionReviewSerializer,
+        response=GradingResultSerializer,
+        errors={409: APIErrorSerializer},
+    ),
 )
 class SubmissionGradingView(TeacherScopedArtifactView):
     def get(self, request, submission_id):
@@ -634,9 +647,38 @@ class SubmissionGradingView(TeacherScopedArtifactView):
         payload = serialize_submission_grading(submission)
         return Response(SubmissionGradingSerializer(payload).data)
 
+    def patch(self, request, submission_id):
+        submission = self.get_submission(submission_id)
+        target = TargetQuestionSerializer(data=request.data)
+        target.fields["question_part_id"].required = True
+        target.fields["question_part_id"].allow_null = False
+        target.is_valid(raise_exception=True)
+        question = get_object_or_404(
+            question_queryset_for_assignment(submission.assignment),
+            pk=target.validated_data.get("question_part_id"),
+        )
+        result = submission.grading_results.filter(question_part=question).first()
+        if result is None:
+            result = GradingResult(
+                submission=submission, question_part=question, max_score=question.max_marks or 0
+            )
+        serializer = SubmissionQuestionReviewSerializer(
+            data=request.data, context={"grading_result": result}
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = save_grading_review(result, **serializer.normalized_data())
+        except SubmissionGradingInProgressError as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response(GradingResultSerializer(result).data)
+
 
 @extend_schema_view(
-    patch=api_schema(request=GradingResultReviewSerializer, response=GradingResultSerializer),
+    patch=api_schema(
+        request=GradingResultReviewSerializer,
+        response=GradingResultSerializer,
+        errors={409: APIErrorSerializer},
+    ),
 )
 class GradingResultDetailView(TeacherScopedArtifactView):
     def patch(self, request, grading_result_id):
@@ -646,7 +688,10 @@ class GradingResultDetailView(TeacherScopedArtifactView):
             context={"grading_result": grading_result},
         )
         serializer.is_valid(raise_exception=True)
-        grading_result = save_grading_review(grading_result, **serializer.normalized_data())
+        try:
+            grading_result = save_grading_review(grading_result, **serializer.normalized_data())
+        except SubmissionGradingInProgressError as exc:
+            return Response({"detail": str(exc)}, status=409)
 
         return Response(GradingResultSerializer(grading_result).data)
 

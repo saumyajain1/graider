@@ -375,7 +375,7 @@ export function AssignmentQuestionsPage() {
 
           <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
             <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
-              AI generation
+              Workflow step
             </p>
             <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
               Generate questions from your assignment.
@@ -384,9 +384,6 @@ export function AssignmentQuestionsPage() {
               Review the question wording, shared context, and marks before preparing answers and
               rubrics. The assignment total is the sum of its scored question totals.
             </p>
-            <WorkflowBack to={`/assignments/${assignment.id}/overview`}>
-              Back to overview
-            </WorkflowBack>
             <AIButton
               busy={generateMutation.isPending}
               disabled={isBusy}

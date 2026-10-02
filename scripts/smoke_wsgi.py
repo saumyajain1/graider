@@ -5,6 +5,7 @@ This file is outside backend/ and is never copied into the production image.
 
 import json
 import os
+import re
 import time
 
 import httpx
@@ -32,7 +33,12 @@ def provider_reply(request):
         }
     elif schema_name == "GeneratedQuestionGradeSchema":
         result = {
-            "score": 2,
+            "criteria": [
+                {"criterion_id": int(criterion_id), "score": 2, "feedback": "Correct."}
+                for criterion_id in re.findall(
+                    r"criterion_id=(\d+)", payload["messages"][-1]["content"]
+                )
+            ],
             "feedback": "Correct.",
             "reasoning_summary": "1 + 1 = 2.",
             "confidence_score": 1,

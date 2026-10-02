@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { ProtectedLayout, PublicOnly } from './routeGuards'
+import { PageError } from '../components/PageError'
 import { AssignmentCreatePage } from '../pages/AssignmentCreatePage'
 import { AssignmentOverviewPage } from '../pages/AssignmentOverviewPage'
 import { AssignmentQuestionsPage } from '../pages/AssignmentQuestionsPage'
@@ -16,10 +17,12 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <PublicOnly />,
+    errorElement: <PageError standalone />,
   },
   {
     path: '/',
     element: <ProtectedLayout />,
+    errorElement: <PageError standalone />,
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'profile', element: <ProfilePage /> },
@@ -39,6 +42,6 @@ export const router = createBrowserRouter([
         element: <SubmissionReviewPage />,
       },
       { path: '*', element: <Navigate to="/" replace /> },
-    ],
+    ].map((route) => ({ ...route, errorElement: <PageError /> })),
   },
 ])

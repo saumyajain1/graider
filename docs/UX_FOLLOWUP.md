@@ -1,0 +1,27 @@
+# Submission tables and rubric grading
+
+This follow-up addresses the six requested corrections. Findings 12–23 in [UX_REVIEW.md](UX_REVIEW.md) remain deferred.
+
+1. **Submission/review queues:** replace per-student cards with a shared table. Search by name or student number and combine that search with a status filter. Show grades, status, intake source, submission date, and Review actions; student responses and detailed errors belong on the full review page. The submission table retains individual AI grading actions.
+2. **Grading inputs:** the existing pipeline already supplied the saved reference answer and every rubric description/maximum. Tests now verify those inputs reach the provider prompt. Each criterion also has an explicit ID so returned scores can be matched to the correct rubric entry.
+3. **Criterion grades and manual review:** AI returns one score and feedback for every rubric criterion. Validate exact criterion coverage, uniqueness, score bounds, and two-decimal precision before saving. Store rubric titles, descriptions, maximums, and separate AI/teacher scores and feedback as a result snapshot. Calculate question totals from criterion scores and assignment totals from question totals. Ungraded submissions show blank editors and their full response, allowing manual grading without an AI call. Blank criterion scores remain ungraded; partial work can be saved without inventing a completed total. Preserve teacher criterion overrides during regrading. Earlier aggregate-only results retain their original grades and explain that a breakdown requires regrading or manual criterion entry.
+4. **Overview:** remove the redundant dark “Set up your questions” card.
+5. **Overview layout/navigation:** place assignment text below the replacement-file control and put Save and continue next to Back at the bottom. Saving drafts before navigation remains intact.
+6. **Questions:** remove the extra Back link from the generation card and use “Workflow step,” matching reference answers and rubrics.
+7. **Dashboard:** remove the extra Edit questions shortcut from assignment cards.
+8. **Review errors:** validate review responses before rendering. The local preview was still running an older backend that omitted the questions and rubric breakdown expected by the rebuilt frontend. Restart that preview with the current backend and preserve its existing database. Incompatible responses now show a retryable review error; unexpected rendering errors show a safe page fallback with Refresh and Back actions inside the workspace.
+
+## Database change
+
+`grading/0002_criterion_results.py` adds one JSON field. It preserves live accounts, assignments, and existing grade values; no database reset or initial-migration rewrite is appropriate now that production data exists. The standard startup migration applies the field when this code is deployed. No production data or service configuration was changed during this work.
+
+## Verification
+
+- 144 backend tests passed on disposable PostgreSQL 18, including thirteen new criterion-grading tests. Coverage includes prompt inputs, AI breakdowns/totals, manual and partial reviews, zero marks, incomplete assignments, teacher scoping, active-grading conflicts, invalid AI output without replacing old results, manual override preservation, and incomplete CSV totals.
+- Repository lint/format checks, frontend build, generated OpenAPI validation, and migration consistency passed. The production Gunicorn check completed individual grading in 16.8 seconds and a delayed bulk request in 124.8 seconds; 62 health checks stayed responsive, and provider waits occurred outside database transactions.
+- Upgrading a copy of the previous local fixture database preserved three accounts, three assignments, and the existing grade. Legacy results gained an empty breakdown rather than fabricated criterion scores.
+- Browser checks verified both tables, name/student-number search, combined filters and empty matches, blank ungraded editors, edited scores/feedback, live question/assignment totals, draft preservation between question saves, persisted values after reload, and the simplified overview/questions navigation. Narrow-screen checks found no page-level horizontal overflow; tables scroll inside their own container.
+- A live synthetic AI check graded both rubric criteria separately. It deducted marks for a reversed scientific explanation, returned criterion feedback, and produced a calculated total of 1/5. Only synthetic prompts/data were used.
+- Five frontend regression tests cover valid ungraded/zero-score data, older backend responses, malformed nested arrays, invalid score types, and non-object responses. CI runs these tests before the frontend build. Browser checks verified the incompatible-response message, an intentionally triggered rendering error, refresh recovery, and the working review page. Existing local account, assignment, submission, and grading values were unchanged by the preview restart.
+
+The temporary local previews run outside the repository with the OpenAI key deliberately blank. The original preview supplies test reference answers and rubrics; its question extraction and grading do not use simulated replacements. The separate criterion preview simulates mapping and grading for visual checks. The regular application still uses the configured OpenAI key. This error-handling follow-up does not change AI configuration or production.

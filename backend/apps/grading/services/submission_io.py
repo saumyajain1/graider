@@ -133,6 +133,10 @@ def build_assignment_results_csv_response(assignment):
                     if result.ai_score is not None
                     else ""
                 )
+                if result.criterion_results and any(
+                    item["final_score"] is None for item in result.criterion_results
+                ):
+                    score = ""
                 feedback = result.final_feedback or result.ai_feedback
             row.extend([score, feedback])
         writer.writerow(row)

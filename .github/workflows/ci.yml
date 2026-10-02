@@ -64,8 +64,10 @@ jobs:
           npm ci --prefix frontend
       - name: Repository lint and formatting
         run: make check RUFF=ruff SHELLCHECK=shellcheck
-      - name: Frontend production build
-        run: npm run build --prefix frontend
+      - name: Frontend tests and production build
+        run: |
+          npm run test --prefix frontend
+          npm run build --prefix frontend
       - name: Backend tests and schema consistency
         working-directory: backend
         run: |

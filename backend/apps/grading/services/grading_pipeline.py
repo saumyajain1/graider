@@ -72,7 +72,12 @@ def grade_question_part(
         system_prompt=dedent(
             """
             You grade one student answer against a question, reference answer, and rubric.
-            Return a concise score, short feedback, a short reasoning summary, and a review flag.
+            Use both the reference answer and each rubric criterion to assess the student answer.
+            Return every supplied criterion_id exactly once with its own score and concise feedback.
+            Each score must be between zero and that criterion's maximum, with at most two decimal
+            places. Explain deductions using evidence from the student answer. Do not invent criteria.
+            Also return overall feedback, a short reasoning summary, and a review flag.
+            Question and submission totals are calculated from the criterion scores by the app.
             """
         ).strip(),
         user_prompt=dedent(

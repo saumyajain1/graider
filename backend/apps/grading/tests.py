@@ -319,7 +319,13 @@ class GradingArtifactApiTests(APITestCase):
             ]
         )
         grade_question_part_mock.return_value = SimpleNamespace(
-            score=4,
+            criteria=[
+                SimpleNamespace(
+                    criterion_id=self.question.rubric_criteria.get().id,
+                    score=4,
+                    feedback="Correct core definition.",
+                )
+            ],
             feedback="Strong definition with room for a clearer example.",
             reasoning_summary="Correct core idea but missing some specificity.",
             confidence_score=0.88,
@@ -405,7 +411,13 @@ class GradingArtifactApiTests(APITestCase):
             ]
         )
         grade_question_part_mock.return_value = SimpleNamespace(
-            score=3,
+            criteria=[
+                SimpleNamespace(
+                    criterion_id=self.question.rubric_criteria.get().id,
+                    score=3,
+                    feedback="Covers the main point.",
+                )
+            ],
             feedback="Adequate response.",
             reasoning_summary="Covers the main point.",
             confidence_score=0.8,
@@ -485,7 +497,13 @@ class GradingArtifactApiTests(APITestCase):
         def grading(*args):
             self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
             return SimpleNamespace(
-                score=4,
+                criteria=[
+                    SimpleNamespace(
+                        criterion_id=self.question.rubric_criteria.get().id,
+                        score=4,
+                        feedback="Correct core definition.",
+                    )
+                ],
                 feedback="Good",
                 reasoning_summary="Good",
                 confidence_score=0.9,
@@ -552,7 +570,13 @@ class GradingArtifactApiTests(APITestCase):
             ]
         )
         grade_question_part_mock.return_value = SimpleNamespace(
-            score=4,
+            criteria=[
+                SimpleNamespace(
+                    criterion_id=self.question.rubric_criteria.get().id,
+                    score=4,
+                    feedback="Correct core definition.",
+                )
+            ],
             feedback="Strong answer.",
             reasoning_summary="Covers the key idea.",
             confidence_score=0.86,

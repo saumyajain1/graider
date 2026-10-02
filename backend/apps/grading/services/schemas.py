@@ -61,8 +61,14 @@ class SubmissionAnswerMappingSchema(BaseModel):
     answers: list[SubmissionAnswerMappingItemSchema]
 
 
+class GeneratedCriterionGradeSchema(BaseModel):
+    criterion_id: int
+    score: float = Field(ge=0, le=9999.99, allow_inf_nan=False)
+    feedback: str = Field(min_length=1)
+
+
 class GeneratedQuestionGradeSchema(BaseModel):
-    score: float = Field(ge=0)
+    criteria: list[GeneratedCriterionGradeSchema] = Field(min_length=1)
     feedback: str = Field(min_length=1)
     reasoning_summary: str = Field(min_length=1)
     confidence_score: float | None = Field(default=None, ge=0, le=1)

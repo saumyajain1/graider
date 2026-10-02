@@ -182,6 +182,7 @@ class GradingResult(models.Model):
     max_score = models.DecimalField(max_digits=6, decimal_places=2)
     ai_feedback = models.TextField(blank=True)
     final_feedback = models.TextField(blank=True)
+    criterion_results = models.JSONField(default=list, blank=True)
     reasoning_summary = models.TextField(blank=True)
     confidence_score = models.DecimalField(
         max_digits=4,

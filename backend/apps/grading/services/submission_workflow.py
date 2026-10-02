@@ -32,20 +32,70 @@ def question_queryset_for_assignment(assignment):
 
 def build_rubric_text(question_part):
     return "\n".join(
-        f"- {criterion.title} ({criterion.max_points} pts): {criterion.description}"
+        f"- criterion_id={criterion.id}: {criterion.title} ({criterion.max_points} pts): {criterion.description}"
         for criterion in question_part.rubric_criteria.all()
     )
 
 
 def calculate_submission_total(submission):
     total = Decimal("0")
-    for result in submission.grading_results.all():
+    results = list(submission.grading_results.all())
+    if len(results) != question_queryset_for_assignment(submission.assignment).count():
+        return None
+    for result in results:
+        if result.criterion_results and any(
+            row["final_score"] is None for row in result.criterion_results
+        ):
+            return None
+        if result.final_score is None and result.ai_score is None:
+            return None
         total += (
             result.final_score
             if result.final_score is not None
             else result.ai_score or Decimal("0")
         )
     return total
+
+
+def criterion_snapshots(question):
+    return [
+        {
+            "criterion_id": criterion.id,
+            "title": criterion.title,
+            "description": criterion.description,
+            "max_points": str(criterion.max_points),
+            "ai_score": None,
+            "final_score": None,
+            "ai_feedback": "",
+            "final_feedback": "",
+        }
+        for criterion in question.rubric_criteria.all()
+    ]
+
+
+def validate_criterion_grades(question, grade):
+    rows = criterion_snapshots(question)
+    grades = {item.criterion_id: item for item in grade.criteria}
+    if len(grades) != len(grade.criteria) or set(grades) != {row["criterion_id"] for row in rows}:
+        raise LLMGenerationError("AI did not grade every rubric criterion exactly once.")
+    for row in rows:
+        item = grades[row["criterion_id"]]
+        score = Decimal(str(item.score))
+        if (
+            not score.is_finite()
+            or score < 0
+            or score > Decimal(row["max_points"])
+            or score != score.quantize(Decimal("0.01"))
+            or not item.feedback.strip()
+        ):
+            raise LLMGenerationError("AI returned invalid rubric criterion marks or feedback.")
+        row.update(
+            ai_score=str(score),
+            final_score=str(score),
+            ai_feedback=item.feedback,
+            final_feedback=item.feedback,
+        )
+    return rows
 
 
 def validate_submission_ready_for_grading(submission):
@@ -150,9 +200,8 @@ def run_grading_pipeline(submission):
                     build_rubric_text(question),
                     extracted_answer_text,
                 )
-                ai_score = Decimal(str(grade.score))
-                if question.max_marks is not None and ai_score > question.max_marks:
-                    ai_score = question.max_marks
+                criterion_results = validate_criterion_grades(question, grade)
+                ai_score = sum(Decimal(row["ai_score"]) for row in criterion_results)
                 ai_feedback = grade.feedback
                 reasoning_summary = grade.reasoning_summary
                 confidence_score = (
@@ -169,6 +218,14 @@ def run_grading_pipeline(submission):
                 )
                 confidence_score = Decimal("1.00")
                 needs_review = False
+                criterion_results = criterion_snapshots(question)
+                for row in criterion_results:
+                    row.update(
+                        ai_score="0",
+                        final_score="0",
+                        ai_feedback=ai_feedback,
+                        final_feedback=ai_feedback,
+                    )
             prepared.append(
                 (
                     question,
@@ -179,6 +236,7 @@ def run_grading_pipeline(submission):
                     reasoning_summary,
                     confidence_score,
                     needs_review,
+                    criterion_results,
                 )
             )
 
@@ -192,6 +250,7 @@ def run_grading_pipeline(submission):
                 reasoning_summary,
                 confidence_score,
                 needs_review,
+                criterion_results,
             ) in prepared:
                 answer_part, _ = SubmissionAnswerPart.objects.get_or_create(
                     submission=submission,
@@ -212,8 +271,16 @@ def run_grading_pipeline(submission):
                     question_part=question,
                     defaults={"max_score": question.max_marks},
                 )
-                previous_ai_score = result.ai_score
                 previous_ai_feedback = result.ai_feedback
+                previous_criteria = {row["criterion_id"]: row for row in result.criterion_results}
+                if preserve_manual:
+                    for row in criterion_results:
+                        old = previous_criteria.get(row["criterion_id"])
+                        if old and old["max_points"] == row["max_points"]:
+                            for name in ("score", "feedback"):
+                                if old[f"final_{name}"] != old[f"ai_{name}"]:
+                                    row[f"final_{name}"] = old[f"final_{name}"]
+                result.criterion_results = criterion_results
                 result.ai_score = ai_score
                 result.max_score = question.max_marks
                 result.ai_feedback = ai_feedback
@@ -222,16 +289,16 @@ def run_grading_pipeline(submission):
                 result.needs_review = needs_review
                 if (
                     not preserve_manual
-                    or result.final_score is None
-                    or result.final_score == previous_ai_score
-                ):
-                    result.final_score = ai_score
-                if (
-                    not preserve_manual
                     or not result.final_feedback
                     or result.final_feedback == previous_ai_feedback
                 ):
                     result.final_feedback = ai_feedback
+                # Once a criterion breakdown exists, the question total is always its sum.
+                result.final_score = (
+                    sum(Decimal(row["final_score"]) for row in criterion_results)
+                    if all(row["final_score"] is not None for row in criterion_results)
+                    else None
+                )
                 result.save()
 
             submission.total_score = calculate_submission_total(submission)
@@ -257,15 +324,34 @@ def run_grading_pipeline(submission):
     return submission
 
 
-def save_grading_review(grading_result, *, final_score, final_feedback, needs_review):
+@transaction.atomic
+def save_grading_review(
+    grading_result, *, final_score, final_feedback, needs_review, criterion_results=None
+):
+    submission = StudentSubmission.objects.select_for_update().get(pk=grading_result.submission_id)
+    if submission.grading_status == StudentSubmission.GradingStatus.GRADING:
+        raise SubmissionGradingInProgressError("Wait for grading to finish before editing results.")
+    if grading_result.pk is None:
+        existing = submission.grading_results.filter(
+            question_part_id=grading_result.question_part_id
+        ).first()
+        if existing is not None:
+            raise SubmissionGradingInProgressError(
+                "Results changed while saving. Reload and try again."
+            )
+    if criterion_results is not None:
+        grading_result.criterion_results = criterion_results
     grading_result.final_score = final_score
     grading_result.final_feedback = final_feedback
     grading_result.needs_review = needs_review
     grading_result.save()
 
-    submission = grading_result.submission
     submission.total_score = calculate_submission_total(submission)
-    submission.grading_status = StudentSubmission.GradingStatus.REVIEWED
+    submission.grading_status = (
+        StudentSubmission.GradingStatus.REVIEWED
+        if submission.total_score is not None
+        else StudentSubmission.GradingStatus.PENDING
+    )
     submission.save(update_fields=("total_score", "grading_status", "updated_at"))
 
     return grading_result

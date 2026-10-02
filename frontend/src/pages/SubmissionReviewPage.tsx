@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { getAssignment } from '../api/assignments'
+import { ApiError } from '../api/client'
 import { getApiErrorMessage } from '../api/errors'
 import {
   finalizeSubmission,
   getSubmissionGrading,
-  updateGradingResult,
+  saveQuestionReview,
+  type CriterionReview,
+  type RubricQuestion,
   type GradingResult,
   type SubmissionAnswerPart,
 } from '../api/grading'
@@ -15,141 +18,282 @@ import { QueryError } from '../components/QueryError'
 import { WorkflowBack } from '../components/WorkflowNavigation'
 import { formatStatus } from '../lib/format'
 
+type ReviewPayload = {
+  question_part_id: number
+  criterion_results: CriterionReview[]
+  final_feedback: string
+  needs_review: boolean
+}
+
+function scoreCents(value: string | null, max: string): number | null {
+  if (value === null || !/^\d+(?:\.\d{1,2})?$/.test(value.trim())) return null
+  const cents = Math.round(Number(value) * 100)
+  return cents >= 0 && cents <= Math.round(Number(max) * 100) ? cents : null
+}
+
 function ReviewEditor({
+  question,
+  referenceAnswer,
   answerPart,
   gradingResult,
   isBusy,
   onSave,
+  onTotal,
 }: {
+  question: RubricQuestion
+  referenceAnswer: string
   answerPart?: SubmissionAnswerPart
-  gradingResult: GradingResult
+  gradingResult?: GradingResult
   isBusy: boolean
-  onSave: (payload: {
-    final_score: string | null
-    final_feedback: string
-    needs_review: boolean
-  }) => void
+  onSave: (payload: ReviewPayload) => void
+  onTotal: (questionId: number, total: number | null) => void
 }) {
-  const [finalScore, setFinalScore] = useState(gradingResult.final_score ?? '')
-  const [finalFeedback, setFinalFeedback] = useState(
-    gradingResult.final_feedback || gradingResult.ai_feedback,
-  )
-  const [needsReview, setNeedsReview] = useState(gradingResult.needs_review)
-
+  const criteria = gradingResult?.criterion_results.length
+    ? gradingResult.criterion_results
+    : question.criteria.map((criterion) => ({
+        criterion_id: criterion.id,
+        title: criterion.title,
+        description: criterion.description,
+        max_points: criterion.max_points,
+        ai_score: null,
+        final_score: null,
+        ai_feedback: '',
+        final_feedback: '',
+      }))
+  const saved = JSON.stringify({
+    rows: criteria.map((row) => ({
+      criterion_id: row.criterion_id,
+      final_score: row.final_score,
+      final_feedback: row.final_feedback,
+    })),
+    feedback: gradingResult?.final_feedback ?? '',
+    needsReview: gradingResult?.needs_review ?? false,
+  })
+  const [draft, setDraft] = useState<{
+    rows: CriterionReview[]
+    feedback: string
+    needsReview: boolean
+  }>(() => JSON.parse(saved))
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    setFinalScore(gradingResult.final_score ?? '')
-    setFinalFeedback(gradingResult.final_feedback || gradingResult.ai_feedback)
-    setNeedsReview(gradingResult.needs_review)
-  }, [
-    gradingResult.final_score,
-    gradingResult.final_feedback,
-    gradingResult.ai_feedback,
-    gradingResult.needs_review,
-  ])
-
+    setDraft(JSON.parse(saved))
+    setError(null)
+  }, [saved])
+  const scores = draft.rows.map((row) =>
+    scoreCents(
+      row.final_score,
+      criteria.find((criterion) => criterion.criterion_id === row.criterion_id)?.max_points ?? '0',
+    ),
+  )
+  const entered = scores.filter((score) => score !== null).length
+  const partialTotal = scores.reduce<number>((sum, score) => sum + (score ?? 0), 0)
+  const total = criteria.length > 0 && entered === criteria.length ? partialTotal : null
+  const max = gradingResult?.max_score ?? question.max_marks
+  const rubricMax = criteria.reduce((sum, row) => sum + Math.round(Number(row.max_points) * 100), 0)
+  const validSetup = Number(max) > 0 && rubricMax === Math.round(Number(max) * 100)
+  useEffect(() => {
+    onTotal(question.question_part_id, total)
+  }, [onTotal, question.question_part_id, total])
+  const editRow = (id: number, changes: Partial<CriterionReview>) =>
+    setDraft((current) => ({
+      ...current,
+      rows: current.rows.map((row) => (row.criterion_id === id ? { ...row, ...changes } : row)),
+    }))
   return (
-    <fieldset
-      disabled={isBusy || Number(gradingResult.max_score) <= 0}
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        const invalid = draft.rows.find(
+          (row) =>
+            row.final_score !== null &&
+            scoreCents(
+              row.final_score,
+              criteria.find((criterion) => criterion.criterion_id === row.criterion_id)!.max_points,
+            ) === null,
+        )
+        if (invalid) {
+          setError(
+            'Each score must be between zero and its criterion maximum, with at most two decimal places.',
+          )
+          return
+        }
+        setError(null)
+        onSave({
+          question_part_id: question.question_part_id,
+          criterion_results: draft.rows,
+          final_feedback: draft.feedback,
+          needs_review: draft.needsReview,
+        })
+      }}
       className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-400 uppercase">
-            {gradingResult.display_label}
+            {question.display_label}
           </p>
           <h2 className="mt-2 font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            {gradingResult.question_text}
+            {question.question_text}
           </h2>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-            AI score {gradingResult.ai_score ?? '0'}
-            {Number(gradingResult.max_score) > 0
-              ? ` / ${gradingResult.max_score}`
-              : ' marks · total not set'}
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-            Confidence {gradingResult.confidence_score ?? 'n/a'}
-          </span>
-        </div>
-      </div>
-
-      {Number(gradingResult.max_score) <= 0 ? (
         <p
-          role="alert"
-          className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          className="rounded-full bg-fuchsia-50 px-4 py-2 text-sm font-semibold text-fuchsia-800"
+          aria-live="polite"
         >
-          This result has no valid total. Set the question marks and regrade this submission before
-          editing its score.
+          Question total: {total === null ? 'Incomplete' : (total / 100).toFixed(2)}
+          {Number(max) > 0 ? ` / ${max}` : ' · total not set'}
+        </p>
+      </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-700">Student answer</h3>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+            {answerPart
+              ? answerPart.extracted_answer_text || 'No answer found for this question.'
+              : 'Answers have not been mapped to questions yet. Read the full submission above to enter marks manually.'}
+          </p>
+        </div>
+        <details className="rounded-xl bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Reference answer
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+            {referenceAnswer || 'No reference answer has been added yet.'}
+          </p>
+        </details>
+      </div>
+      {gradingResult?.ai_score !== null && gradingResult?.ai_score !== undefined ? (
+        <p className="mt-4 text-sm text-slate-600">
+          AI question total: {gradingResult.ai_score}
+          {Number(gradingResult.max_score) > 0
+            ? ` / ${gradingResult.max_score}`
+            : ' marks · total not set'}{' '}
+          · Confidence: {gradingResult.confidence_score ?? 'n/a'}
         </p>
       ) : null}
-
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-700">Extracted answer</p>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {answerPart?.extracted_answer_text || 'No mapped answer was found for this question.'}
+      {gradingResult && !gradingResult.criterion_results.length ? (
+        <p className="mt-3 text-sm text-amber-800">
+          This earlier result has no rubric breakdown. Regrade with AI or enter criterion marks
+          below; existing totals remain saved until you save a new breakdown.
+        </p>
+      ) : null}
+      {!validSetup ? (
+        <p role="alert" className="mt-4 text-sm text-amber-800">
+          Set positive question marks and matching rubric allocations before saving criterion
+          grades.
+        </p>
+      ) : null}
+      <fieldset disabled={isBusy || !validSetup} className="mt-5 space-y-4">
+        <legend className="text-base font-semibold text-slate-900">
+          Rubric marks and feedback
+        </legend>
+        {criteria.map((criterion) => {
+          const row = draft.rows.find((item) => item.criterion_id === criterion.criterion_id)
+          if (!row) return null
+          return (
+            <section
+              key={criterion.criterion_id}
+              className="rounded-xl border border-slate-200 p-4"
+            >
+              <h3 className="font-semibold text-slate-950">
+                {criterion.title}{' '}
+                <span className="font-normal text-slate-500">· {criterion.max_points} marks</span>
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{criterion.description}</p>
+              {criterion.ai_score !== null ? (
+                <div className="mt-3 rounded-lg bg-fuchsia-50 px-3 py-2 text-sm text-fuchsia-900">
+                  <p className="font-medium">
+                    AI score: {criterion.ai_score} / {criterion.max_points}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap">{criterion.ai_feedback}</p>
+                </div>
+              ) : null}
+              <div className="mt-3 grid gap-4 md:grid-cols-[10rem_1fr]">
+                <label className="block text-sm font-medium text-slate-700">
+                  Score for {criterion.title}
+                  <input
+                    type="number"
+                    min="0"
+                    max={criterion.max_points}
+                    step="0.01"
+                    value={row.final_score ?? ''}
+                    onChange={(event) =>
+                      editRow(criterion.criterion_id, { final_score: event.target.value || null })
+                    }
+                    className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Feedback for {criterion.title}
+                  <textarea
+                    rows={3}
+                    value={row.final_feedback}
+                    onChange={(event) =>
+                      editRow(criterion.criterion_id, { final_feedback: event.target.value })
+                    }
+                    className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2"
+                  />
+                </label>
+              </div>
+            </section>
+          )
+        })}
+        {!criteria.length ? (
+          <p className="text-sm text-slate-600">
+            Add rubric criteria to this question to enter grades.
           </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-700">AI reasoning</p>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {gradingResult.reasoning_summary || 'No reasoning summary provided.'}
-          </p>
-          <p className="mt-4 text-sm font-semibold text-slate-700">AI feedback</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {gradingResult.ai_feedback || 'No AI feedback provided.'}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-[0.25fr_1fr]">
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Final score</span>
-          <input
-            value={finalScore}
-            onChange={(event) => setFinalScore(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
-            placeholder={gradingResult.ai_score ?? '0'}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Final feedback</span>
+        ) : null}
+        <p className="text-sm text-slate-600" aria-live="polite">
+          {entered} of {criteria.length} criterion scores entered.{' '}
+          {total === null
+            ? `Partial total: ${(partialTotal / 100).toFixed(2)} marks.`
+            : `Total: ${(total / 100).toFixed(2)} / ${max}.`}
+        </p>
+        <label className="block text-sm font-medium text-slate-700">
+          Overall feedback for {question.display_label}
           <textarea
-            rows={5}
-            value={finalFeedback}
-            onChange={(event) => setFinalFeedback(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            rows={3}
+            value={draft.feedback}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, feedback: event.target.value }))
+            }
+            className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2"
           />
         </label>
-      </div>
-
-      <label className="mt-4 inline-flex items-center gap-3 text-sm font-medium text-slate-700">
-        <input
-          type="checkbox"
-          checked={needsReview}
-          onChange={(event) => setNeedsReview(event.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500"
-        />
-        Keep this item flagged for review
-      </label>
-
-      <div className="mt-5">
-        <button
-          type="button"
-          onClick={() =>
-            onSave({
-              final_score: finalScore.trim() ? finalScore : null,
-              final_feedback: finalFeedback,
-              needs_review: needsReview,
-            })
-          }
-          className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
-        >
-          Save review changes
-        </button>
-      </div>
-    </fieldset>
+        <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={draft.needsReview}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, needsReview: event.target.checked }))
+            }
+          />
+          Keep this item flagged for review
+        </label>
+        <div>
+          <button
+            type="submit"
+            className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:opacity-60"
+          >
+            {isBusy ? 'Saving…' : 'Save review changes'}
+          </button>
+        </div>
+      </fieldset>
+      {gradingResult?.ai_feedback ? (
+        <details className="mt-4 text-sm text-slate-600">
+          <summary className="cursor-pointer font-medium">
+            AI overall feedback and reasoning
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap">{gradingResult.ai_feedback}</p>
+          <p className="mt-2 whitespace-pre-wrap">{gradingResult.reasoning_summary}</p>
+        </details>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-rose-700">
+          {error}
+        </p>
+      ) : null}
+    </form>
   )
 }
 
@@ -169,6 +313,8 @@ export function SubmissionReviewPage() {
     queryKey: ['submissions', submissionId, 'grading'],
     queryFn: () => getSubmissionGrading(Number(submissionId)),
     enabled: Boolean(submissionId),
+    retry: (failures, error) =>
+      !(error instanceof ApiError && error.status === 200) && failures < 2,
   })
 
   const refreshReviewData = async () => {
@@ -179,17 +325,7 @@ export function SubmissionReviewPage() {
   }
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      gradingResultId,
-      payload,
-    }: {
-      gradingResultId: number
-      payload: {
-        final_score: string | null
-        final_feedback: string
-        needs_review: boolean
-      }
-    }) => updateGradingResult(gradingResultId, payload),
+    mutationFn: (payload: ReviewPayload) => saveQuestionReview(Number(submissionId), payload),
     onSuccess: async () => {
       setErrorMessage(null)
       setStatusMessage('Review changes saved.')
@@ -214,6 +350,12 @@ export function SubmissionReviewPage() {
     },
   })
 
+  const [draftTotals, setDraftTotals] = useState<Record<number, number | null>>({})
+  const onTotal = useCallback(
+    (id: number, total: number | null) =>
+      setDraftTotals((current) => (current[id] === total ? current : { ...current, [id]: total })),
+    [],
+  )
   const grading = gradingQuery.data
   const answerPartsByQuestionId = useMemo(() => {
     return new Map(
@@ -227,13 +369,19 @@ export function SubmissionReviewPage() {
 
   if (assignmentQuery.isError || gradingQuery.isError) {
     return (
-      <QueryError
-        error={assignmentQuery.error || gradingQuery.error}
-        onRetry={() => {
-          void assignmentQuery.refetch()
-          void gradingQuery.refetch()
-        }}
-      />
+      <div className="space-y-5">
+        <h1 className="section-title">Could not load submission review</h1>
+        <QueryError
+          error={assignmentQuery.error || gradingQuery.error}
+          onRetry={() => {
+            void assignmentQuery.refetch()
+            void gradingQuery.refetch()
+          }}
+        />
+        <WorkflowBack to={`/assignments/${assignmentId}/submissions`}>
+          Back to submissions
+        </WorkflowBack>
+      </div>
     )
   }
 
@@ -253,8 +401,8 @@ export function SubmissionReviewPage() {
           </p>
           <h1 className="mt-3 section-title">{submission.student_name}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Review the AI pass question by question, edit marks or feedback, and finalize when the
-            result is ready to export.
+            Review AI grades or enter marks manually. Edit scores and feedback for each rubric
+            criterion, save your changes, and finalize when the result is ready to export.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold">
@@ -265,7 +413,7 @@ export function SubmissionReviewPage() {
               Status: {formatStatus(submission.grading_status)}
             </span>
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
-              Total {submission.total_score ?? 'n/a'}
+              Saved total {submission.total_score ?? 'Incomplete'}
             </span>
           </div>
         </div>
@@ -288,6 +436,7 @@ export function SubmissionReviewPage() {
               updateMutation.isPending ||
               grading.grading_results.length === 0 ||
               grading.grading_results.some((result) => Number(result.max_score) <= 0) ||
+              submission.total_score === null ||
               submission.grading_status === 'finalized'
             }
             onClick={() => finalizeMutation.mutate()}
@@ -317,34 +466,77 @@ export function SubmissionReviewPage() {
         </div>
       ) : null}
 
-      {grading.grading_results.length > 0 ? (
-        <section className="space-y-4">
-          {grading.grading_results.map((gradingResult) => (
-            <ReviewEditor
-              key={gradingResult.id}
-              gradingResult={gradingResult}
-              isBusy={updateMutation.isPending || finalizeMutation.isPending}
-              answerPart={answerPartsByQuestionId.get(gradingResult.question_part_id)}
-              onSave={(payload) => {
-                updateMutation.mutate({
-                  gradingResultId: gradingResult.id,
-                  payload,
-                })
-              }}
-            />
-          ))}
-        </section>
-      ) : (
-        <section className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-8">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            No grading results yet
-          </h2>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-            This submission needs to be graded from the Submissions page before there is anything to
-            review here.
+      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap justify-between gap-3 text-sm">
+          <p>
+            <strong>Student number:</strong> {submission.student_identifier || 'Not provided'}
           </p>
-        </section>
-      )}
+          <p aria-live="polite">
+            <strong>Draft assignment total:</strong>{' '}
+            {(
+              Object.values(draftTotals).reduce<number>((sum, total) => sum + (total ?? 0), 0) / 100
+            ).toFixed(2)}{' '}
+            /{' '}
+            {grading.questions.reduce((sum, question) => sum + Number(question.max_marks ?? 0), 0)}
+            {grading.questions.some((question) => draftTotals[question.question_part_id] == null)
+              ? ' · incomplete'
+              : ''}
+          </p>
+        </div>
+        <details className="mt-4" open={!grading.answer_parts.length}>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Full student submission
+          </summary>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+            {submission.raw_response_text || 'No response text was extracted.'}
+          </p>
+          {submission.response_file_url ? (
+            <a
+              href={submission.response_file_url}
+              className="mt-3 inline-block text-sm text-fuchsia-700 underline"
+            >
+              {submission.response_filename || 'Download original submission'}
+            </a>
+          ) : null}
+        </details>
+        {submission.ingestion_notes ? (
+          <p className="mt-3 text-sm text-amber-800">{submission.ingestion_notes}</p>
+        ) : null}
+        {submission.last_error ? (
+          <p role="alert" className="mt-3 text-sm text-rose-700">
+            {submission.last_error}
+          </p>
+        ) : null}
+      </section>
+      <section className="space-y-4">
+        {grading.questions.map((question) => (
+          <ReviewEditor
+            key={question.question_part_id}
+            question={question}
+            referenceAnswer={
+              grading.reference_answers.find(
+                (answer) => answer.question_part_id === question.question_part_id,
+              )?.answer_text ?? ''
+            }
+            gradingResult={grading.grading_results.find(
+              (result) => result.question_part_id === question.question_part_id,
+            )}
+            isBusy={
+              updateMutation.isPending ||
+              finalizeMutation.isPending ||
+              submission.grading_status === 'grading'
+            }
+            answerPart={answerPartsByQuestionId.get(question.question_part_id)}
+            onSave={(payload) => updateMutation.mutate(payload)}
+            onTotal={onTotal}
+          />
+        ))}
+        {!grading.questions.length ? (
+          <p className="rounded-2xl bg-slate-50 p-6 text-sm text-slate-600">
+            Add scored questions and their rubric to start reviewing this submission.
+          </p>
+        ) : null}
+      </section>
 
       <div className="flex flex-wrap gap-3">
         <WorkflowBack to={`/assignments/${assignment.id}/review`}>
