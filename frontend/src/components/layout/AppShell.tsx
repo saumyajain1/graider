@@ -1,11 +1,11 @@
 import clsx from 'clsx'
 import { useEffect, type PropsWithChildren } from 'react'
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 
-import { getApiErrorMessage } from '../../api/errors'
-import { useCurrentUser, useLogout } from '../../hooks/useAuth'
+import { ProfileMenu } from './ProfileMenu'
+import { PublicLinks } from '../PublicLinks'
 
-type NavigationItem = { label: string; to: string }
+type NavigationItem = { label: string; to: string | null }
 
 function getAssignmentId(pathname: string) {
   const match = pathname.match(/\/assignments\/(\d+)/)
@@ -13,44 +13,44 @@ function getAssignmentId(pathname: string) {
 }
 
 export function AppShell({ children }: PropsWithChildren) {
-  const { user } = useCurrentUser()
-  const logout = useLogout()
-  const navigate = useNavigate()
   const location = useLocation()
   const assignmentId = getAssignmentId(location.pathname)
 
   const navItems: NavigationItem[] = [
     { label: 'Dashboard', to: '/' },
-    ...(assignmentId
-      ? [
-          { label: 'Overview', to: `/assignments/${assignmentId}/overview` },
-          { label: 'Questions', to: `/assignments/${assignmentId}/questions` },
-          { label: 'Reference answers', to: `/assignments/${assignmentId}/reference-answers` },
-          { label: 'Rubric', to: `/assignments/${assignmentId}/rubric` },
-          { label: 'Submissions', to: `/assignments/${assignmentId}/submissions` },
-          { label: 'Review', to: `/assignments/${assignmentId}/review` },
-        ]
-      : []),
+    ...[
+      { label: 'Assignment overview', path: 'overview' },
+      { label: 'Questions', path: 'questions' },
+      { label: 'Reference answers', path: 'reference-answers' },
+      { label: 'Rubric', path: 'rubric' },
+      { label: 'Submissions', path: 'submissions' },
+      { label: 'Review', path: 'review' },
+    ].map(({ label, path }) => ({
+      label,
+      to: assignmentId ? `/assignments/${assignmentId}/${path}` : null,
+    })),
   ]
 
   const pageTitle =
     location.pathname === '/'
       ? 'Dashboard'
-      : location.pathname.includes('/review/')
-        ? 'Student review'
-        : location.pathname.endsWith('/review')
-          ? 'Review queue'
-          : location.pathname.endsWith('/reference-answers')
-            ? 'Reference answers'
-            : location.pathname.endsWith('/rubric')
-              ? 'Rubric builder'
-              : location.pathname.endsWith('/submissions')
-                ? 'Submission intake'
-                : location.pathname.endsWith('/questions')
-                  ? 'Question setup'
-                  : location.pathname === '/assignments/new'
-                    ? 'Create assignment'
-                    : 'Assignment overview'
+      : location.pathname === '/profile'
+        ? 'Your account'
+        : location.pathname.includes('/review/')
+          ? 'Student review'
+          : location.pathname.endsWith('/review')
+            ? 'Review queue'
+            : location.pathname.endsWith('/reference-answers')
+              ? 'Reference answers'
+              : location.pathname.endsWith('/rubric')
+                ? 'Rubric builder'
+                : location.pathname.endsWith('/submissions')
+                  ? 'Submission intake'
+                  : location.pathname.endsWith('/questions')
+                    ? 'Question setup'
+                    : location.pathname === '/assignments/new'
+                      ? 'Create assignment'
+                      : 'Assignment overview'
 
   useEffect(() => {
     document.title = `${pageTitle} | Graider`
@@ -66,31 +66,40 @@ export function AppShell({ children }: PropsWithChildren) {
               <p className="mt-2 text-sm text-fuchsia-50/70">AI-assisted grading</p>
             </Link>
 
-            <nav
-              aria-label="Workspace"
-              className={clsx(
-                'mt-8 grid gap-2 lg:grid-cols-1',
-                assignmentId ? 'grid-cols-2' : 'grid-cols-1',
+            <nav aria-label="Workspace" className="mt-8 grid grid-cols-2 gap-2 lg:grid-cols-1">
+              {navItems.map((item) =>
+                item.to ? (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      clsx(
+                        'block rounded-2xl px-4 py-3 text-sm transition',
+                        isActive
+                          ? 'bg-white text-slate-950 shadow-lg'
+                          : 'border border-white/10 text-fuchsia-50/80 hover:border-white/25 hover:bg-white/10',
+                      )
+                    }
+                    end={item.to === '/'}
+                  >
+                    {item.label}
+                  </NavLink>
+                ) : (
+                  <button
+                    key={item.label}
+                    type="button"
+                    disabled
+                    title="Open an assignment to use this page."
+                    className="block cursor-not-allowed rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-slate-400/60"
+                  >
+                    {item.label}
+                  </button>
+                ),
               )}
-            >
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.label}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    clsx(
-                      'block rounded-2xl px-4 py-3 text-sm transition',
-                      isActive
-                        ? 'bg-white text-slate-950 shadow-lg'
-                        : 'border border-white/10 text-fuchsia-50/80 hover:border-white/25 hover:bg-white/10',
-                    )
-                  }
-                  end={item.to === '/'}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
             </nav>
+            <div className="mt-8 border-t border-white/10 pt-6 text-fuchsia-50/80">
+              <PublicLinks />
+            </div>
           </div>
         </aside>
 
@@ -108,21 +117,7 @@ export function AppShell({ children }: PropsWithChildren) {
                   Assignment #{assignmentId}
                 </div>
               ) : null}
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm">
-                {user?.full_name}
-              </div>
-              <button
-                type="button"
-                disabled={logout.isPending}
-                onClick={() =>
-                  logout.mutate(undefined, {
-                    onSuccess: () => navigate('/login', { replace: true }),
-                  })
-                }
-                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100"
-              >
-                {logout.isPending ? 'Signing out...' : 'Sign out'}
-              </button>
+              <ProfileMenu />
             </div>
           </header>
 
@@ -130,14 +125,6 @@ export function AppShell({ children }: PropsWithChildren) {
             id="main-content"
             className="app-card min-h-[calc(100vh-10rem)] min-w-0 flex-1 p-6 md:p-8"
           >
-            {logout.isError ? (
-              <div
-                role="alert"
-                className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
-              >
-                {getApiErrorMessage(logout.error, 'Could not sign out. Please try again.')}
-              </div>
-            ) : null}
             {children}
           </main>
         </div>

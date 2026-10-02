@@ -169,7 +169,7 @@ export function DashboardPage() {
                     to={`/assignments/${assignment.id}/overview`}
                     className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
                   >
-                    Open overview
+                    Open assignment overview
                   </Link>
                   <Link
                     to={`/assignments/${assignment.id}/questions`}

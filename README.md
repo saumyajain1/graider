@@ -10,13 +10,14 @@ Graider is a personal project for AI-assisted grading. Teachers create assignmen
 - Generate questions, reference answers, and rubrics with configurable AI models and reasoning effort.
 - Add student submissions individually or import a CSV; review scores and feedback before finalizing.
 - Keep original uploads private, restrict access to their teacher, and enforce upload and AI token limits.
+- Register or sign in with Google, or connect it to an existing account from your profile.
 
 Built with session authentication and CSRF protection, persistent file storage, and CI covering backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
 
 ## Tech stack
 
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS.
-- **Backend:** Django, Django REST Framework, Gunicorn, WhiteNoise.
+- **Backend:** Django, Django REST Framework, django-allauth, Gunicorn, WhiteNoise.
 - **Data:** SQLite and local files for development; Neon PostgreSQL and private Object Storage in production.
 - **AI:** OpenAI SDK; GPT-6 Luna by default, configurable per task.
 - **Hosting:** one Docker web service on Render for the frontend and API.
@@ -71,6 +72,22 @@ The image contains the built frontend and static files. Startup applies pending 
 ## API documentation
 
 Open [Swagger UI](http://localhost:8000/api/docs/) to explore the API. Sign in to Graider first; **Try it out** uses your browser session and CSRF protection. The specification at `/api/schema/` is generated from the API serializers and views; CI validates it without a separately maintained OpenAPI file.
+
+## Google sign-in
+
+Google sign-in is optional; password accounts continue working without it. To enable registration, sign-in, and explicit account linking:
+
+1. In [Google Auth Platform](https://console.cloud.google.com/auth/overview), use separate projects for development and production. Configure **Branding**, an **External** audience, and only the `openid`, email, and profile scopes. Create a **Web application** OAuth client under **Clients**. In production Branding, set the homepage to `https://graider-xt2w.onrender.com/about/` and the privacy policy to `https://graider-xt2w.onrender.com/privacy/`, then select **Audience → Publish app** once those pages are deployed.
+2. Add the exact **Authorized redirect URIs** for the addresses you use:
+   - Docker: `http://localhost:8000/accounts/google/login/callback/`.
+   - Source development: `http://localhost:5173/accounts/google/login/callback/`.
+   - Production: `https://graider-xt2w.onrender.com/accounts/google/login/callback/`.
+3. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in your ignored `.env` file. Add both separately to Render's environment settings for production, then restart/redeploy. Leave both empty to disable Google login. `GRAIDER_GOOGLE_RATE` sets the login-start limit, default `10/min`.
+4. New users can select **Continue with Google** on either login tab. Existing password users sign in first, then open the profile menu → **Manage account → Connect Google**. Matching emails alone never merge accounts.
+
+Use a consistent hostname locally; `localhost` and `127.0.0.1` require separate callback entries and have separate browser cookies. Only basic identity scopes are requested. Google tokens are not stored; subsequent requests use Django sessions. Startup adds allauth's tables through migrations and preserves existing data.
+
+User administration is available at `/admin/` with an authorized staff account; create one with `python manage.py createsuperuser` inside the backend or container.
 
 ## CI/CD
 

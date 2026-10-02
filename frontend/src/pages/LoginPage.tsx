@@ -3,7 +3,10 @@ import { useState } from 'react'
 import { useEffect } from 'react'
 
 import { getApiErrorMessage } from '../api/errors'
-import { useLogin, useRegister } from '../hooks/useAuth'
+import { AuthNotice } from '../components/AuthNotice'
+import { GoogleButton } from '../components/GoogleButton'
+import { PublicLinks } from '../components/PublicLinks'
+import { useAuthOptions, useLogin, useRegister } from '../hooks/useAuth'
 
 type AuthMode = 'login' | 'register'
 
@@ -13,6 +16,7 @@ export function LoginPage() {
   }, [])
   const loginMutation = useLogin()
   const registerMutation = useRegister()
+  const options = useAuthOptions()
   const [mode, setMode] = useState<AuthMode>('login')
   const [form, setForm] = useState({
     full_name: '',
@@ -87,6 +91,26 @@ export function LoginPage() {
               : 'Create an account to start grading. You’ll be signed in automatically.'}
           </p>
 
+          <div className="mt-5">
+            <AuthNotice />
+          </div>
+          <div className="mt-5 space-y-4">
+            {options.data?.google_enabled ? (
+              <>
+                <GoogleButton process="login" disabled={activeMutation.isPending} />
+                <p className="text-center text-xs text-slate-500">
+                  {mode === 'register'
+                    ? 'Create your account with Google. No new password needed.'
+                    : 'New here? Google also creates your account on your first visit.'}
+                </p>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <span className="h-px flex-1 bg-slate-200" />
+                  or continue with email
+                  <span className="h-px flex-1 bg-slate-200" />
+                </div>
+              </>
+            ) : null}
+          </div>
           <form
             className="mt-8 space-y-4"
             onSubmit={(event) => {
@@ -183,6 +207,9 @@ export function LoginPage() {
           </form>
         </section>
       </div>
+      <footer className="mt-6 text-fuchsia-50/80">
+        <PublicLinks />
+      </footer>
     </div>
   )
 }

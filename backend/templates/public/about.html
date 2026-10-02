@@ -1,0 +1,48 @@
+<!-- prettier-ignore -->
+{% extends "public/base.html" %}
+{% block title %}Graider | AI-assisted grading{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">AI-assisted grading</p>
+  <h1>Grade thoughtfully.<br />Keep the final say.</h1>
+  <p class="intro">
+    Graider helps teachers turn assignments into questions, reference answers, and rubrics, then
+    review scores and feedback before finalizing results.
+  </p>
+  <a class="button" href="/login">Open Graider</a>
+</section>
+<section class="features" aria-label="What you can do with Graider">
+  <article class="card">
+    <h2>Prepare an assignment</h2>
+    <p>
+      Paste questions or upload a TXT file or PDF. Edit the questions, reference answers, and rubric
+      yourself, or generate suggestions with AI.
+    </p>
+  </article>
+  <article class="card">
+    <h2>Review each answer</h2>
+    <p>
+      Add submissions individually or import a CSV. Inspect suggested scores and feedback question
+      by question, and make changes before finalizing.
+    </p>
+  </article>
+  <article class="card">
+    <h2>Keep your workspace private</h2>
+    <p>
+      Sign in with Google or an email and password. Your assignments and original uploads are
+      restricted to your account through the app.
+    </p>
+  </article>
+</section>
+<section class="card project-note">
+  <h2>Try it with sample work</h2>
+  <p>
+    Graider is a personal project. Use sample submissions rather than real student information. AI
+    suggestions need your review before you use the results.
+  </p>
+  <p>
+    <a href="https://github.com/saumyajain1/graider">Explore the source code</a> or read the
+    <a href="{% url 'privacy' %}">privacy policy</a> to understand how your information is handled.
+  </p>
+</section>
+{% endblock %}

@@ -4,6 +4,7 @@ boto3==1.43.97
 dj-database-url==3.1.2
 django-storages[s3]==1.14.6
 django-cors-headers==4.9.0
+django-allauth[socialaccount]==65.19.7
 djangorestframework==3.17.1
 openai==2.29.0
 pydantic==2.12.5

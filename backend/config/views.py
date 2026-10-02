@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.http import FileResponse, Http404, JsonResponse
+from django.shortcuts import render
 from django.views.decorators.http import require_safe
 
 
@@ -8,6 +9,16 @@ def health(request):
     response = JsonResponse({"status": "ok"})
     response["Cache-Control"] = "no-store"
     return response
+
+
+@require_safe
+def public_home(request):
+    return render(request, "public/about.html")
+
+
+@require_safe
+def privacy(request):
+    return render(request, "public/privacy.html")
 
 
 @require_safe

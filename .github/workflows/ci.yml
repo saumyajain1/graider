@@ -106,6 +106,12 @@ jobs:
           curl --fail --header 'X-Forwarded-Proto: https' \
             http://127.0.0.1:10000/assignments/123/questions
           curl --fail --header 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:10000/about/ --output /tmp/graider-about.html
+          curl --fail --header 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:10000/privacy/ --output /tmp/graider-privacy.html
+          curl --fail --header 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:10000/static/public/site.css --output /dev/null
+          curl --fail --header 'X-Forwarded-Proto: https' \
             http://127.0.0.1:10000/api/docs/ --output /tmp/graider-docs.html
           curl --fail --header 'X-Forwarded-Proto: https' --header 'Accept: application/json' \
             http://127.0.0.1:10000/api/schema/ --output /tmp/graider-schema.json

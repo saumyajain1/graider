@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { fetchCurrentUser, login, logout, register, type AuthPayload } from '../api/auth'
+import {
+  fetchAuthOptions,
+  fetchCurrentUser,
+  login,
+  logout,
+  register,
+  startGoogleAuth,
+  type AuthPayload,
+} from '../api/auth'
 import { ApiError } from '../api/client'
 
 export function useCurrentUser() {
@@ -51,5 +59,16 @@ export function useLogout() {
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], null)
     },
+  })
+}
+
+export function useAuthOptions() {
+  return useQuery({ queryKey: ['auth', 'options'], queryFn: fetchAuthOptions })
+}
+
+export function useGoogleAuth() {
+  return useMutation({
+    mutationFn: startGoogleAuth,
+    onSuccess: ({ redirect_url }) => window.location.assign(redirect_url),
   })
 }

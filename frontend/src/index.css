@@ -45,7 +45,7 @@ select {
   font: inherit;
 }
 
-:where(a, button, input, textarea, select):focus-visible {
+:where(a, button, input, textarea, select, summary):focus-visible {
   outline: 3px solid #a855f7;
   outline-offset: 3px;
 }
