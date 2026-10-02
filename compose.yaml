@@ -1,0 +1,23 @@
+services:
+  graider:
+    image: saumyaj1/graider:${GRAIDER_IMAGE_TAG:-latest}
+    ports:
+      - '127.0.0.1:8000:10000'
+    env_file: .env
+    environment:
+      DJANGO_DEBUG: 'true'
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: sqlite:////app/data/db.sqlite3
+      FRONTEND_URL: ''
+      DJANGO_CORS_ALLOWED_ORIGINS: ''
+      DJANGO_CSRF_TRUSTED_ORIGINS: ''
+      AWS_ENDPOINT_URL_S3: ''
+      AWS_ACCESS_KEY_ID: ''
+      AWS_SECRET_ACCESS_KEY: ''
+    volumes:
+      - database:/app/data
+      - uploads:/app/backend/media
+
+volumes:
+  database:
+  uploads:

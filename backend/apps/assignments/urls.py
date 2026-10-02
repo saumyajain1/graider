@@ -3,8 +3,9 @@ from django.urls import path
 from .views import (
     AssignmentDetailView,
     AssignmentListCreateView,
-    QuestionGenerateView,
+    AssignmentSourceFileView,
     QuestionDetailView,
+    QuestionGenerateView,
     QuestionListCreateView,
     QuestionReorderView,
 )
@@ -12,6 +13,11 @@ from .views import (
 urlpatterns = [
     path("", AssignmentListCreateView.as_view(), name="assignment-list"),
     path("<int:assignment_id>", AssignmentDetailView.as_view(), name="assignment-detail"),
+    path(
+        "<int:assignment_id>/source-file",
+        AssignmentSourceFileView.as_view(),
+        name="assignment-source-file",
+    ),
     path("<int:assignment_id>/questions", QuestionListCreateView.as_view(), name="question-list"),
     path(
         "<int:assignment_id>/questions/generate",

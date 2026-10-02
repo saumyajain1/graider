@@ -1,18 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import { getAssignment } from '../api/assignments'
+import { getApiErrorMessage } from '../api/errors'
 import {
   createRubricCriterion,
   deleteRubricCriterion,
   generateRubric,
   listRubric,
+  listReferenceAnswers,
   updateRubricCriterion,
   type RubricCriterion,
   type RubricQuestion,
 } from '../api/grading'
-import { getApiErrorMessage } from '../api/errors'
+import { AIButton } from '../components/AIButton'
+import { QueryError } from '../components/QueryError'
+import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
+import { WorkflowDraftProvider, useDraft, useDraftSaves } from '../hooks/useDraftSaves'
+import { requireMarks, marksInCents } from '../lib/marks'
 
 function RubricCriterionEditor({
   criterion,
@@ -20,8 +26,8 @@ function RubricCriterionEditor({
   onDelete,
 }: {
   criterion: RubricCriterion
-  onSave: (payload: { title: string; description: string; max_points: string }) => Promise<void>
-  onDelete: () => Promise<void>
+  onSave: (payload: { title: string; description: string; max_points: string }) => Promise<unknown>
+  onDelete: () => void
 }) {
   const [title, setTitle] = useState(criterion.title)
   const [description, setDescription] = useState(criterion.description)
@@ -31,7 +37,21 @@ function RubricCriterionEditor({
     setTitle(criterion.title)
     setDescription(criterion.description)
     setMaxPoints(criterion.max_points)
-  }, [criterion])
+  }, [criterion.title, criterion.description, criterion.max_points])
+
+  const payload = { title, description, max_points: maxPoints }
+  useDraft(`criterion-${criterion.id}`, {
+    dirty:
+      title !== criterion.title ||
+      description !== criterion.description ||
+      maxPoints !== criterion.max_points,
+    validate: () => {
+      if (!title.trim() || !description.trim())
+        throw new Error('Each rubric criterion needs a title and a description.')
+      requireMarks(maxPoints, title || 'Criterion')
+    },
+    save: () => onSave(payload),
+  })
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -40,32 +60,41 @@ function RubricCriterionEditor({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+          aria-label="Criterion title"
           placeholder="Criterion"
         />
         <input
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+          aria-label="Criterion description"
           placeholder="What earns these points?"
         />
         <input
+          type="number"
+          min="0.01"
+          max="9999.99"
+          step="0.01"
           value={maxPoints}
           onChange={(event) => setMaxPoints(event.target.value)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+          aria-label="Maximum points"
           placeholder="Pts"
         />
       </div>
       <div className="mt-3 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => void onSave({ title, description, max_points: maxPoints })}
+          onClick={() => {
+            void onSave(payload).catch(() => {})
+          }}
           className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
         >
           Save
         </button>
         <button
           type="button"
-          onClick={() => void onDelete()}
+          onClick={() => onDelete()}
           className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
         >
           Delete
@@ -77,19 +106,23 @@ function RubricCriterionEditor({
 
 function RubricQuestionSection({
   group,
+  isBusy,
   onGenerate,
+  isGenerating,
   onCreate,
   onUpdate,
   onDelete,
 }: {
   group: RubricQuestion
-  onGenerate: () => Promise<void>
+  isGenerating: boolean
+  isBusy: boolean
+  onGenerate: () => void
   onCreate: (payload: { title: string; description: string; max_points: string }) => Promise<void>
   onUpdate: (
     criterionId: number,
     payload: { title: string; description: string; max_points: string },
-  ) => Promise<void>
-  onDelete: (criterionId: number) => Promise<void>
+  ) => Promise<unknown>
+  onDelete: (criterionId: number) => void
 }) {
   const [newCriterion, setNewCriterion] = useState({
     title: '',
@@ -97,8 +130,27 @@ function RubricQuestionSection({
     max_points: '',
   })
 
+  const newDirty = Object.values(newCriterion).some((value) => value.trim())
+  const create = async () => {
+    await onCreate(newCriterion)
+    setNewCriterion({ title: '', description: '', max_points: '' })
+  }
+  useDraft(`new-criterion-${group.question_part_id}`, {
+    dirty: newDirty,
+    validate: () => {
+      if (!newDirty) return
+      if (!newCriterion.title.trim() || !newCriterion.description.trim())
+        throw new Error(`${group.display_label}: finish the new criterion or clear its draft.`)
+      requireMarks(newCriterion.max_points, `${group.display_label} criterion`)
+    },
+    save: create,
+  })
+
   return (
-    <article className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+    <fieldset
+      disabled={isBusy}
+      className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-400 uppercase">
@@ -110,15 +162,15 @@ function RubricQuestionSection({
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-            {group.max_marks ? `${group.max_marks} marks` : 'Marks not set'}
+            {group.max_marks ? `${group.max_marks} marks` : 'Marks not set'} · Allocated:{' '}
+            {group.criteria.reduce(
+              (sum, criterion) => sum + (marksInCents(criterion.max_points) ?? 0),
+              0,
+            ) / 100}
           </span>
-          <button
-            type="button"
-            onClick={() => void onGenerate()}
-            className="rounded-full border border-slate-300 px-3 py-1 text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-          >
-            Generate with AI
-          </button>
+          <AIButton busy={isGenerating} onClick={() => onGenerate()}>
+            {isGenerating ? 'Generating…' : 'Generate with AI'}
+          </AIButton>
         </div>
       </div>
 
@@ -148,6 +200,7 @@ function RubricQuestionSection({
               setNewCriterion((current) => ({ ...current, title: event.target.value }))
             }
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Criterion title"
             placeholder="Criterion"
           />
           <input
@@ -159,9 +212,14 @@ function RubricQuestionSection({
               }))
             }
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Criterion description"
             placeholder="What should be graded?"
           />
           <input
+            type="number"
+            min="0.01"
+            max="9999.99"
+            step="0.01"
             value={newCriterion.max_points}
             onChange={(event) =>
               setNewCriterion((current) => ({
@@ -170,6 +228,7 @@ function RubricQuestionSection({
               }))
             }
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-fuchsia-500"
+            aria-label="Maximum points"
             placeholder="Pts"
           />
           <button
@@ -180,8 +239,12 @@ function RubricQuestionSection({
               !newCriterion.max_points.trim()
             }
             onClick={async () => {
-              await onCreate(newCriterion)
-              setNewCriterion({ title: '', description: '', max_points: '' })
+              try {
+                await onCreate(newCriterion)
+                setNewCriterion({ title: '', description: '', max_points: '' })
+              } catch {
+                // The parent mutation displays the error; retain the entered criterion.
+              }
             }}
             className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -189,13 +252,14 @@ function RubricQuestionSection({
           </button>
         </div>
       </div>
-    </article>
+    </fieldset>
   )
 }
 
 export function AssignmentRubricPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
+  const drafts = useDraftSaves()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const assignmentQuery = useQuery({
@@ -254,7 +318,10 @@ export function AssignmentRubricPage() {
 
   const generateMutation = useMutation({
     mutationFn: (questionPartId?: number) =>
-      generateRubric(assignmentId!, questionPartId ? { question_part_id: questionPartId } : undefined),
+      generateRubric(
+        assignmentId!,
+        questionPartId ? { question_part_id: questionPartId } : undefined,
+      ),
     onSuccess: async () => {
       setErrorMessage(null)
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'rubric'] })
@@ -268,6 +335,18 @@ export function AssignmentRubricPage() {
     return <div className="text-sm text-slate-600">Loading rubric...</div>
   }
 
+  if (assignmentQuery.isError || rubricQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || rubricQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void rubricQuery.refetch()
+        }}
+      />
+    )
+  }
+
   const assignment = assignmentQuery.data
   const rubricGroups = rubricQuery.data ?? []
 
@@ -276,89 +355,148 @@ export function AssignmentRubricPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
-        <div className="rounded-[2rem] border border-slate-200 p-6">
-          <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
-            Rubric builder
-          </p>
-          <h1 className="mt-3 section-title">{assignment.title}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            Generate rubric criteria from each question and its reference answer, or add
-            the criteria manually. These point allocations will later drive grading.
-          </p>
-        </div>
+    <WorkflowDraftProvider value={drafts}>
+      <div className="space-y-8">
+        <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
+          <div className="rounded-[2rem] border border-slate-200 p-6">
+            <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
+              Rubric builder
+            </p>
+            <h1 className="mt-3 section-title">{assignment.title}</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Generate rubric criteria from each question and its reference answer, or add the
+              criteria manually. These point allocations guide grading.
+            </p>
+          </div>
 
-        <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
-          <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
-            Workflow step
-          </p>
-          <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Rubrics are generated per question part and stay fully editable.
-          </h2>
-          <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            AI generation depends on reference answers. If the key is missing or generation
-            fails, you can still add criteria manually.
-          </p>
-          <button
-            type="button"
-            onClick={() => void generateMutation.mutateAsync(undefined)}
-            className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100"
+          <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
+            <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
+              Workflow step
+            </p>
+            <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
+              Set clear grading criteria.
+            </h2>
+            <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
+              AI generation depends on reference answers. If an answer is missing or generation
+              fails, you can still add criteria manually.
+            </p>
+            <AIButton
+              busy={generateMutation.isPending && generateMutation.variables === undefined}
+              disabled={
+                drafts.isSaving ||
+                generateMutation.isPending ||
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                deleteMutation.isPending
+              }
+              onClick={() => generateMutation.mutate(undefined)}
+              className="mt-6"
+            >
+              {generateMutation.isPending && generateMutation.variables === undefined
+                ? 'Generating...'
+                : 'Generate all rubric criteria'}
+            </AIButton>
+          </div>
+        </section>
+
+        {errorMessage ? (
+          <div
+            role="alert"
+            className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
           >
-            {generateMutation.isPending ? 'Generating...' : 'Generate all rubric criteria'}
-          </button>
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {rubricGroups.length > 0 ? (
+          <section className="space-y-4">
+            {rubricGroups.map((group) => (
+              <RubricQuestionSection
+                key={group.question_part_id}
+                group={group}
+                isGenerating={
+                  generateMutation.isPending &&
+                  generateMutation.variables === group.question_part_id
+                }
+                isBusy={
+                  drafts.isSaving ||
+                  generateMutation.isPending ||
+                  createMutation.isPending ||
+                  updateMutation.isPending ||
+                  deleteMutation.isPending
+                }
+                onGenerate={() => {
+                  generateMutation.mutate(group.question_part_id)
+                }}
+                onCreate={async (payload) => {
+                  await createMutation.mutateAsync({
+                    question_part_id: group.question_part_id,
+                    ...payload,
+                  })
+                }}
+                onUpdate={(criterionId, payload) => {
+                  return updateMutation.mutateAsync({ criterionId, payload })
+                }}
+                onDelete={(criterionId) => {
+                  deleteMutation.mutate(criterionId)
+                }}
+              />
+            ))}
+          </section>
+        ) : (
+          <section className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-8">
+            <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
+              No question parts available
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
+              Add or generate question parts before building the rubric.
+            </p>
+          </section>
+        )}
+
+        <div className="flex flex-wrap gap-3">
+          <WorkflowBack to={`/assignments/${assignment.id}/reference-answers`}>
+            Back to reference answers
+          </WorkflowBack>
+          <WorkflowContinue
+            to={`/assignments/${assignment.id}/submissions`}
+            disabled={
+              drafts.isSaving ||
+              generateMutation.isPending ||
+              createMutation.isPending ||
+              updateMutation.isPending ||
+              deleteMutation.isPending
+            }
+            validate={async () => {
+              const answers = await listReferenceAnswers(assignmentId!)
+              const missing = answers.filter((answer) => !answer.answer_text.trim())
+              if (missing.length)
+                throw new Error(
+                  `Add reference answers for ${missing.map((answer) => answer.display_label).join(', ')} before continuing.`,
+                )
+              const groups = await listRubric(assignmentId!)
+              if (!groups.length) throw new Error('Add scored questions before continuing.')
+              for (const group of groups) {
+                requireMarks(group.max_marks, group.display_label)
+                const allocated = group.criteria.reduce(
+                  (sum, criterion) => sum + (marksInCents(criterion.max_points) ?? 0),
+                  0,
+                )
+                if (
+                  !group.criteria.length ||
+                  group.criteria.some((criterion) => marksInCents(criterion.max_points) === null) ||
+                  allocated !== marksInCents(group.max_marks)
+                )
+                  throw new Error(
+                    `${group.display_label}: rubric points must total ${group.max_marks} marks. Currently allocated: ${allocated / 100}.`,
+                  )
+              }
+            }}
+          >
+            submissions
+          </WorkflowContinue>
         </div>
-      </section>
-
-      {errorMessage ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
-        </div>
-      ) : null}
-
-      {rubricGroups.length > 0 ? (
-        <section className="space-y-4">
-          {rubricGroups.map((group) => (
-            <RubricQuestionSection
-              key={group.question_part_id}
-              group={group}
-              onGenerate={async () => {
-                await generateMutation.mutateAsync(group.question_part_id)
-              }}
-              onCreate={async (payload) => {
-                await createMutation.mutateAsync({
-                  question_part_id: group.question_part_id,
-                  ...payload,
-                })
-              }}
-              onUpdate={async (criterionId, payload) => {
-                await updateMutation.mutateAsync({ criterionId, payload })
-              }}
-              onDelete={async (criterionId) => {
-                await deleteMutation.mutateAsync(criterionId)
-              }}
-            />
-          ))}
-        </section>
-      ) : (
-        <section className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-8">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            No question parts available
-          </h2>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-            Add or generate question parts before building the rubric.
-          </p>
-        </section>
-      )}
-
-      <div className="flex flex-wrap gap-3">
-        <Link
-          to={`/assignments/${assignment.id}/reference-answers`}
-          className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-        >
-          Back to reference answers
-        </Link>
       </div>
-    </div>
+    </WorkflowDraftProvider>
   )
 }

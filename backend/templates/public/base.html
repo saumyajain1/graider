@@ -1,0 +1,33 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="{% block description %}Graider helps teachers prepare assignments, grade submissions, and review AI suggestions.{% endblock %}"
+    />
+    <title>{% block title %}Graider{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'frontend/favicon.svg' %}" />
+    <link rel="stylesheet" href="{% static 'public/site.css' %}" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <div class="container">
+      <header class="header">
+        <a class="brand" href="{% url 'public-home' %}">Graider</a>
+        <nav aria-label="Main navigation">
+          <a href="{% url 'public-home' %}">About</a>
+          <a href="{% url 'privacy' %}">Privacy</a>
+          <a class="button" href="/login">Sign in</a>
+        </nav>
+      </header>
+      <main id="content">{% block content %}{% endblock %}</main>
+      <footer>
+        <span>A personal project by <a href="https://github.com/saumyajain1">Saumya Jain</a>.</span>
+        <a href="{% url 'privacy' %}">Privacy policy</a>
+      </footer>
+    </div>
+  </body>
+</html>

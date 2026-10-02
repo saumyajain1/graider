@@ -4,6 +4,7 @@ export type CurrentUser = {
   id: number
   email: string
   full_name: string
+  connected_accounts: { provider: string; email: string }[]
 }
 
 export type AuthPayload = {
@@ -13,7 +14,7 @@ export type AuthPayload = {
 }
 
 export async function fetchCurrentUser() {
-  return apiRequest<CurrentUser>('/api/auth/me', { timeoutMs: 5000 })
+  return apiRequest<CurrentUser>('/api/auth/me', { timeoutMs: 90000 })
 }
 
 export async function login(payload: AuthPayload) {
@@ -35,4 +36,15 @@ export async function register(payload: AuthPayload) {
 
 export async function logout() {
   return apiRequest<void>('/api/auth/logout', { method: 'POST' })
+}
+
+export async function fetchAuthOptions() {
+  return apiRequest<{ google_enabled: boolean }>('/api/auth/options')
+}
+
+export async function startGoogleAuth(process: 'login' | 'connect') {
+  return apiRequest<{ redirect_url: string }>('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ process }),
+  })
 }

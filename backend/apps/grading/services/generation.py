@@ -2,12 +2,13 @@ import json
 import os
 import re
 import unicodedata
+from decimal import Decimal
 from pathlib import Path
 from textwrap import dedent
 
 from apps.assignments.models import Assignment, QuestionPart
 
-from .openai_client import OpenAIChatService
+from .openai_client import LLMGenerationError, OpenAIChatService
 from .schemas import (
     GeneratedQuestionPartSchema,
     GeneratedQuestionSetSchema,
@@ -15,8 +16,8 @@ from .schemas import (
     GeneratedRubricSchema,
 )
 
-QUESTION_MODEL = os.getenv("OPENAI_QUESTION_MODEL", "gpt-5.4-mini")
-ARTIFACT_MODEL = os.getenv("OPENAI_ARTIFACT_MODEL", "gpt-5.4-mini")
+QUESTION_MODEL = os.getenv("OPENAI_QUESTION_MODEL", "gpt-6-luna")
+ARTIFACT_MODEL = os.getenv("OPENAI_ARTIFACT_MODEL", "gpt-6-luna")
 
 FOCUS_HINT_RE = re.compile(r"\b(?:q|question)\s*[-_ ]?(?P<number>\d{1,2})\b", re.IGNORECASE)
 TOP_LEVEL_SECTION_RE = re.compile(
@@ -248,7 +249,7 @@ def append_context_part(parts, parent_label: str, context_chunks: list[str]):
             source_label=parent_label,
             parent_key=parent_label,
             text=text,
-            max_marks=0,
+            max_marks=None,
         )
     )
 
@@ -280,17 +281,25 @@ def parse_structured_pdf_questions(assignment: Assignment):
     for parent_label, group_matches in grouped_matches.items():
         section_meta = section_index.get(parent_label)
         section_start = section_meta["match"].end() if section_meta else group_matches[0][1].start()
-        section_end = section_meta["end"] if section_meta else (
-            group_matches[-1][1].end() if len(group_matches) == 1 else group_matches[-1][1].start()
+        section_end = (
+            section_meta["end"]
+            if section_meta
+            else (
+                group_matches[-1][1].end()
+                if len(group_matches) == 1
+                else group_matches[-1][1].start()
+            )
         )
         section_text = focused_text[section_start:section_end]
         shared_marks_match = EACH_PART_MARKS_RE.search(section_text)
-        shared_marks = parse_marks(shared_marks_match.group("points")) if shared_marks_match else None
+        shared_marks = (
+            parse_marks(shared_marks_match.group("points")) if shared_marks_match else None
+        )
 
         context_chunks = []
         if section_meta:
             preamble = clean_context_block(
-                focused_text[section_meta["match"].end():group_matches[0][1].start()]
+                focused_text[section_meta["match"].end() : group_matches[0][1].start()]
             )
             if preamble:
                 context_chunks.append(preamble)
@@ -313,6 +322,8 @@ def parse_structured_pdf_questions(assignment: Assignment):
                 if inline_marks_match
                 else shared_marks
             )
+            if max_marks is None or max_marks <= 0:
+                return None
             if inline_marks_match:
                 block = clean_question_block(INLINE_MARKS_RE.sub("", block))
 
@@ -351,12 +362,13 @@ def repair_generated_question_parts(
     if not question_set.parts or not question_set_needs_repair(question_set):
         return question_set
 
-    service = OpenAIChatService()
     try:
+        service = OpenAIChatService()
         repaired = service.parse(
+            user=assignment.teacher,
+            operation="question_repair",
             model=QUESTION_MODEL,
             response_format=GeneratedQuestionSetSchema,
-            reasoning_effort="medium",
             system_prompt=dedent(
                 """
                 You are cleaning already-segmented assignment question parts extracted from a PDF.
@@ -384,11 +396,21 @@ def repair_generated_question_parts(
         return question_set
 
     original_signature = [
-        (part.part_type, normalize_source_label(part.source_label), part.parent_key or "")
+        (
+            part.part_type,
+            normalize_source_label(part.source_label),
+            part.parent_key or "",
+            part.max_marks,
+        )
         for part in question_set.parts
     ]
     repaired_signature = [
-        (part.part_type, normalize_source_label(part.source_label), part.parent_key or "")
+        (
+            part.part_type,
+            normalize_source_label(part.source_label),
+            part.parent_key or "",
+            part.max_marks,
+        )
         for part in repaired.parts
     ]
     if original_signature != repaired_signature:
@@ -403,7 +425,9 @@ def format_question_label(question_part: QuestionPart):
 
 def build_shared_context(question_part: QuestionPart):
     assignment = question_part.assignment
-    group_key = question_part.parent_key or parent_label_from_source_label(question_part.source_label)
+    group_key = question_part.parent_key or parent_label_from_source_label(
+        question_part.source_label
+    )
     blocks = []
     seen = set()
 
@@ -417,10 +441,14 @@ def build_shared_context(question_part: QuestionPart):
         blocks.append(f"{title}:\n{normalized}")
 
     if group_key:
-        explicit_contexts = assignment.question_parts.filter(
-            part_type=QuestionPart.PartType.CONTEXT,
-            parent_key=group_key,
-        ).exclude(id=question_part.id).order_by("display_order", "id")
+        explicit_contexts = (
+            assignment.question_parts.filter(
+                part_type=QuestionPart.PartType.CONTEXT,
+                parent_key=group_key,
+            )
+            .exclude(id=question_part.id)
+            .order_by("display_order", "id")
+        )
         for context_part in explicit_contexts:
             append_block(f"Shared context {context_part.display_label}", context_part.text)
 
@@ -481,9 +509,10 @@ def generate_question_parts(assignment: Assignment):
     normalized_text = normalize_assignment_text(assignment.raw_assignment_text)
 
     return service.parse(
+        user=assignment.teacher,
+        operation="question_generation",
         model=QUESTION_MODEL,
         response_format=GeneratedQuestionSetSchema,
-        reasoning_effort="high",
         system_prompt=dedent(
             """
             You convert assignment text into structured grading question parts.
@@ -494,7 +523,7 @@ def generate_question_parts(assignment: Assignment):
             - Be conservative and literal with math-heavy documents.
 
             Rules:
-            - Never invent sections, questions, context, or marks that are not present.
+            - Never invent sections, questions, or context that are not present.
             - Keep the source numbering in source_label exactly as closely as possible, such as
               1, 1.1, 1.2, (a), or (b). Do not flatten 1.1 and 1.2 into 1 and 2.
             - Use parent_key for the shared top-level group, such as 1 for 1.1 and 1.2.
@@ -506,7 +535,15 @@ def generate_question_parts(assignment: Assignment):
             - Do not create context entries for due dates, submission instructions, section titles,
               or notes like "each part is worth 3 points".
             - Remove answer blanks such as "Answer: TODO".
-            - If marks are shared across subparts, assign that shared mark value to each graded part.
+            - Preserve explicitly stated marks per question, including "each part is worth" values.
+            - Every scored question must have positive max_marks with at most two decimal places.
+              Read the assignment as a whole. When individual marks are absent, propose reasonable
+              allocations proportional to the complexity and expected work of each question.
+              If an overall assignment or section total is stated, distribute its remaining marks
+              across unmarked questions while preserving explicit allocations and matching that total.
+              Otherwise propose a coherent scale (for example 1 for recall, 3 for explanation,
+              5 for multi-step analysis). These allocations will be reviewed by the teacher.
+            - Context entries are unscored: set their max_marks to null.
             - Repair obvious PDF extraction artifacts conservatively: fix broken spacing, line wraps,
               and hyphenation, but preserve mathematical meaning.
             - Prefer fewer, high-precision question parts over many speculative ones.
@@ -532,6 +569,8 @@ def generate_reference_answer(assignment: Assignment, question_part: QuestionPar
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
     return service.parse(
+        user=assignment.teacher,
+        operation="reference_answer",
         model=ARTIFACT_MODEL,
         response_format=GeneratedReferenceAnswerSchema,
         system_prompt=dedent(
@@ -563,14 +602,17 @@ def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text:
     service = OpenAIChatService()
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
-    return service.parse(
+    parsed = service.parse(
+        user=question_part.assignment.teacher,
+        operation="rubric_generation",
         model=ARTIFACT_MODEL,
         response_format=GeneratedRubricSchema,
         system_prompt=dedent(
             """
             You produce concise grading criteria for a single question part.
-            Create criteria that are concrete, instructor-friendly, and suitable for an MVP grading tool.
-            If max marks are provided, keep the total criterion points aligned as closely as possible.
+            Create criteria that are concrete and instructor-friendly.
+            Each criterion must have positive points with at most two decimal places.
+            The sum of all criterion points must equal the question max marks exactly.
             """
         ).strip(),
         user_prompt=dedent(
@@ -590,3 +632,21 @@ def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text:
             """
         ).strip(),
     )
+
+    validate_generated_rubric(question_part, parsed)
+    return parsed
+
+
+def validate_generated_rubric(question_part, parsed):
+    points = [Decimal(str(criterion.max_points)) for criterion in parsed.criteria]
+    if (
+        question_part.max_marks is None
+        or question_part.max_marks <= 0
+        or not points
+        or any(
+            not point.is_finite() or point <= 0 or point != point.quantize(Decimal("0.01"))
+            for point in points
+        )
+        or sum(points) != question_part.max_marks
+    ):
+        raise LLMGenerationError("Generated rubric points do not match the question total.")

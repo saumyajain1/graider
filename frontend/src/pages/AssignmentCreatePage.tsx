@@ -30,24 +30,22 @@ export function AssignmentCreatePage() {
         <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
           Assignment creation
         </p>
-        <h1 className="mt-3 section-title">Start a new grading project</h1>
+        <h1 className="mt-3 section-title">Create an assignment</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          Paste the assignment prompt, upload a .txt file, or try a PDF extraction. You
-          can edit the resulting text immediately after creation.
+          Paste your questions or upload a TXT file or PDF. You can review and edit the text after
+          creating the assignment.
         </p>
       </div>
 
       <form
         className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]"
-        onSubmit={async (event) => {
+        onSubmit={(event) => {
           event.preventDefault()
-          await createMutation.mutateAsync(form)
+          createMutation.mutate(form)
         }}
       >
         <section className="rounded-[2rem] border border-slate-200 p-6">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            Core details
-          </h2>
+          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">Core details</h2>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Title</span>
@@ -62,9 +60,7 @@ export function AssignmentCreatePage() {
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Course name
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Course name</span>
               <input
                 value={form.course_name}
                 onChange={(event) =>
@@ -75,9 +71,7 @@ export function AssignmentCreatePage() {
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Description
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Description</span>
               <textarea
                 rows={4}
                 value={form.description}
@@ -92,9 +86,7 @@ export function AssignmentCreatePage() {
         </section>
 
         <section className="rounded-[2rem] border border-slate-200 p-6">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            Source text
-          </h2>
+          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">Source text</h2>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">
@@ -114,9 +106,7 @@ export function AssignmentCreatePage() {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
-                Assignment text
-              </span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">Assignment text</span>
               <textarea
                 rows={14}
                 value={form.raw_assignment_text}
@@ -132,7 +122,10 @@ export function AssignmentCreatePage() {
             </label>
 
             {createMutation.isError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div
+                role="alert"
+                className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+              >
                 {getApiErrorMessage(
                   createMutation.error,
                   'Something went wrong while saving the assignment.',

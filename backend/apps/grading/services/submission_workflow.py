@@ -1,5 +1,8 @@
+import logging
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -7,9 +10,17 @@ from apps.assignments.models import QuestionPart
 
 from ..models import GradingResult, ReferenceAnswer, StudentSubmission, SubmissionAnswerPart
 from .grading_pipeline import grade_question_part, map_submission_answers
+from .openai_client import LLMConfigurationError, LLMGenerationError, public_llm_error
+from .usage import LLMQuotaExceeded
+
+logger = logging.getLogger(__name__)
 
 
 class SubmissionNotReadyError(ValueError):
+    pass
+
+
+class SubmissionGradingInProgressError(Exception):
     pass
 
 
@@ -29,7 +40,11 @@ def build_rubric_text(question_part):
 def calculate_submission_total(submission):
     total = Decimal("0")
     for result in submission.grading_results.all():
-        total += result.final_score if result.final_score is not None else result.ai_score or Decimal("0")
+        total += (
+            result.final_score
+            if result.final_score is not None
+            else result.ai_score or Decimal("0")
+        )
     return total
 
 
@@ -46,7 +61,21 @@ def validate_submission_ready_for_grading(submission):
     missing_reference_answers = []
     missing_rubric = []
     for question in questions:
+        if question.max_marks is None or question.max_marks <= 0:
+            raise SubmissionNotReadyError(
+                f"Set positive total marks for {question.display_label} before grading."
+            )
+        criteria = list(question.rubric_criteria.all())
+        if criteria and (
+            any(criterion.max_points <= 0 for criterion in criteria)
+            or sum(criterion.max_points for criterion in criteria) != question.max_marks
+        ):
+            raise SubmissionNotReadyError(
+                f"Rubric points for {question.display_label} must total {question.max_marks} marks before grading."
+            )
         try:
+            if not question.reference_answer.answer_text.strip():
+                raise ReferenceAnswer.DoesNotExist
             question.reference_answer
         except ReferenceAnswer.DoesNotExist:
             missing_reference_answers.append(question.part_key)
@@ -66,10 +95,26 @@ def validate_submission_ready_for_grading(submission):
 
 def run_grading_pipeline(submission):
     questions = validate_submission_ready_for_grading(submission)
-    original_status = submission.grading_status
-    submission.grading_status = StudentSubmission.GradingStatus.GRADING
-    submission.last_error = ""
-    submission.save(update_fields=("grading_status", "last_error", "updated_at"))
+    now = timezone.now()
+    with transaction.atomic():
+        submission = StudentSubmission.objects.select_for_update().get(pk=submission.pk)
+        if submission.grading_status in (
+            StudentSubmission.GradingStatus.GRADED,
+            StudentSubmission.GradingStatus.REVIEWED,
+            StudentSubmission.GradingStatus.FINALIZED,
+        ) and submission.updated_at >= now - timedelta(
+            seconds=settings.GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS
+        ):
+            return submission
+        if (
+            submission.grading_status == StudentSubmission.GradingStatus.GRADING
+            and submission.updated_at >= now - timedelta(hours=1)
+        ):
+            raise SubmissionGradingInProgressError("This submission is already being graded.")
+        original_status = submission.grading_status
+        submission.grading_status = StudentSubmission.GradingStatus.GRADING
+        submission.last_error = ""
+        submission.save(update_fields=("grading_status", "last_error", "updated_at"))
 
     try:
         if submission.raw_response_text.strip():
@@ -87,17 +132,67 @@ def run_grading_pipeline(submission):
             StudentSubmission.GradingStatus.FINALIZED,
         ]
 
-        with transaction.atomic():
-            for question in questions:
-                mapping_item = mapping_by_key.get(question.part_key)
-                extracted_answer_text = (
-                    mapping_item.extracted_answer_text.strip() if mapping_item else ""
+        prepared = []
+        for question in questions:
+            mapping_item = mapping_by_key.get(question.part_key)
+            extracted_answer_text = (
+                mapping_item.extracted_answer_text.strip() if mapping_item else ""
+            )
+            mapping_confidence = (
+                Decimal(str(mapping_item.mapping_confidence))
+                if mapping_item and mapping_item.mapping_confidence is not None
+                else None
+            )
+            if extracted_answer_text:
+                grade = grade_question_part(
+                    question,
+                    question.reference_answer.answer_text,
+                    build_rubric_text(question),
+                    extracted_answer_text,
                 )
-                mapping_confidence = (
-                    Decimal(str(mapping_item.mapping_confidence))
-                    if mapping_item and mapping_item.mapping_confidence is not None
+                ai_score = Decimal(str(grade.score))
+                if question.max_marks is not None and ai_score > question.max_marks:
+                    ai_score = question.max_marks
+                ai_feedback = grade.feedback
+                reasoning_summary = grade.reasoning_summary
+                confidence_score = (
+                    Decimal(str(grade.confidence_score))
+                    if grade.confidence_score is not None
                     else None
                 )
+                needs_review = grade.needs_review
+            else:
+                ai_score = Decimal("0")
+                ai_feedback = "No answer found for this question."
+                reasoning_summary = (
+                    "The submission did not contain a usable answer for this question part."
+                )
+                confidence_score = Decimal("1.00")
+                needs_review = False
+            prepared.append(
+                (
+                    question,
+                    extracted_answer_text,
+                    mapping_confidence,
+                    ai_score,
+                    ai_feedback,
+                    reasoning_summary,
+                    confidence_score,
+                    needs_review,
+                )
+            )
+
+        with transaction.atomic():
+            for (
+                question,
+                extracted_answer_text,
+                mapping_confidence,
+                ai_score,
+                ai_feedback,
+                reasoning_summary,
+                confidence_score,
+                needs_review,
+            ) in prepared:
                 answer_part, _ = SubmissionAnswerPart.objects.get_or_create(
                     submission=submission,
                     question_part=question,
@@ -112,42 +207,15 @@ def run_grading_pipeline(submission):
                     )
                 )
 
-                if extracted_answer_text:
-                    grade = grade_question_part(
-                        question,
-                        question.reference_answer.answer_text,
-                        build_rubric_text(question),
-                        extracted_answer_text,
-                    )
-                    ai_score = Decimal(str(grade.score))
-                    if question.max_marks is not None and ai_score > question.max_marks:
-                        ai_score = question.max_marks
-                    ai_feedback = grade.feedback
-                    reasoning_summary = grade.reasoning_summary
-                    confidence_score = (
-                        Decimal(str(grade.confidence_score))
-                        if grade.confidence_score is not None
-                        else None
-                    )
-                    needs_review = grade.needs_review
-                else:
-                    ai_score = Decimal("0")
-                    ai_feedback = "No answer found for this question."
-                    reasoning_summary = (
-                        "The submission did not contain a usable answer for this question part."
-                    )
-                    confidence_score = Decimal("1.00")
-                    needs_review = False
-
                 result, _ = GradingResult.objects.get_or_create(
                     submission=submission,
                     question_part=question,
-                    defaults={"max_score": question.max_marks or Decimal("0")},
+                    defaults={"max_score": question.max_marks},
                 )
                 previous_ai_score = result.ai_score
                 previous_ai_feedback = result.ai_feedback
                 result.ai_score = ai_score
-                result.max_score = question.max_marks or Decimal("0")
+                result.max_score = question.max_marks
                 result.ai_feedback = ai_feedback
                 result.reasoning_summary = reasoning_summary
                 result.confidence_score = confidence_score
@@ -173,8 +241,16 @@ def run_grading_pipeline(submission):
                 update_fields=("total_score", "grading_status", "last_error", "updated_at")
             )
     except Exception as exc:
+        logger.exception("Grading failed for submission %s", submission.pk)
         submission.grading_status = StudentSubmission.GradingStatus.FAILED
-        submission.last_error = str(exc)
+        if isinstance(exc, SubmissionNotReadyError):
+            submission.last_error = str(exc)
+        elif isinstance(exc, LLMQuotaExceeded):
+            submission.last_error = str(exc)
+        elif isinstance(exc, (LLMConfigurationError, LLMGenerationError)):
+            submission.last_error = public_llm_error(exc)
+        else:
+            submission.last_error = "Grading failed. Please try again."
         submission.save(update_fields=("grading_status", "last_error", "updated_at"))
         raise
 

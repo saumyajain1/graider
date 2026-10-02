@@ -1,6 +1,9 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.assignments.models import QuestionPart
+from apps.uploads import file_api_url
 
 from .models import (
     GradingResult,
@@ -8,6 +11,7 @@ from .models import (
     RubricCriterion,
     StudentSubmission,
     SubmissionAnswerPart,
+    SubmissionImport,
 )
 
 
@@ -19,6 +23,21 @@ class ReferenceAnswerWriteSerializer(serializers.ModelSerializer):
 
 
 class RubricCriterionWriteSerializer(serializers.ModelSerializer):
+    max_points = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=Decimal("0.01"))
+
+    def validate(self, attrs):
+        question = self.instance.question_part
+        points = attrs.get("max_points", self.instance.max_points)
+        if question.max_marks is None or question.max_marks <= 0:
+            raise serializers.ValidationError(
+                {"max_points": "Set positive question total marks first."}
+            )
+        if points > question.max_marks:
+            raise serializers.ValidationError(
+                {"max_points": "Criterion points cannot exceed the question total marks."}
+            )
+        return attrs
+
     class Meta:
         model = RubricCriterion
         fields = (
@@ -86,8 +105,10 @@ class ReferenceAnswerCreateSerializer(serializers.Serializer):
 
     def validate_question_part_id(self, value):
         assignment = self.context["assignment"]
-        if not assignment.question_parts.filter(id=value).exists():
-            raise serializers.ValidationError("Question part does not belong to this assignment.")
+        if not assignment.question_parts.filter(
+            id=value, part_type=QuestionPart.PartType.QUESTION
+        ).exists():
+            raise serializers.ValidationError("Choose a scored question from this assignment.")
         return value
 
 
@@ -95,12 +116,26 @@ class RubricCriterionCreateSerializer(serializers.Serializer):
     question_part_id = serializers.IntegerField()
     title = serializers.CharField(max_length=255)
     description = serializers.CharField()
-    max_points = serializers.DecimalField(max_digits=6, decimal_places=2)
+    max_points = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=Decimal("0.01"))
+
+    def validate(self, attrs):
+        question = self.context["assignment"].question_parts.get(id=attrs["question_part_id"])
+        if question.max_marks is None or question.max_marks <= 0:
+            raise serializers.ValidationError(
+                {"max_points": "Set positive question total marks first."}
+            )
+        if attrs["max_points"] > question.max_marks:
+            raise serializers.ValidationError(
+                {"max_points": "Criterion points cannot exceed the question total marks."}
+            )
+        return attrs
 
     def validate_question_part_id(self, value):
         assignment = self.context["assignment"]
-        if not assignment.question_parts.filter(id=value).exists():
-            raise serializers.ValidationError("Question part does not belong to this assignment.")
+        if not assignment.question_parts.filter(
+            id=value, part_type=QuestionPart.PartType.QUESTION
+        ).exists():
+            raise serializers.ValidationError("Choose a scored question from this assignment.")
         return value
 
 
@@ -144,11 +179,32 @@ class StudentSubmissionSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
-    def get_response_file_url(self, obj):
-        return obj.response_file.url if obj.response_file else None
+    def get_response_file_url(self, obj) -> str | None:
+        return (
+            file_api_url("submission-response-file", submission_id=obj.id)
+            if obj.response_file
+            else None
+        )
 
-    def get_response_filename(self, obj):
-        return obj.response_file.name.split("/")[-1] if obj.response_file else None
+    def get_response_filename(self, obj) -> str | None:
+        return (
+            (obj.response_original_filename or obj.response_file.name.split("/")[-1])
+            if obj.response_file
+            else None
+        )
+
+
+class SubmissionImportSerializer(serializers.ModelSerializer):
+    source_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SubmissionImport
+        fields = ("id", "original_filename", "source_file_url", "row_count", "created_at")
+
+    def get_source_file_url(self, obj) -> str:
+        return file_api_url(
+            "submission-import-file", assignment_id=obj.assignment_id, import_id=obj.id
+        )
 
 
 class SubmissionCreateSerializer(serializers.Serializer):
@@ -281,3 +337,17 @@ def build_rubric_question_item(question_part: QuestionPart):
             many=True,
         ).data,
     }
+
+
+class TargetQuestionSerializer(serializers.Serializer):
+    question_part_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class SubmissionCsvUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
+class GradeAllResultSerializer(serializers.Serializer):
+    graded_count = serializers.IntegerField()
+    failed_count = serializers.IntegerField()
+    submissions = StudentSubmissionSerializer(many=True)

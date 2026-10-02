@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
+import { WorkflowBack } from '../components/WorkflowNavigation'
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
+
 import { getAssignment } from '../api/assignments'
 import { listSubmissions } from '../api/grading'
 
@@ -38,6 +42,18 @@ export function AssignmentReviewPage() {
     return <div className="text-sm text-slate-600">Loading review queue...</div>
   }
 
+  if (assignmentQuery.isError || submissionsQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error || submissionsQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+          void submissionsQuery.refetch()
+        }}
+      />
+    )
+  }
+
   const assignment = assignmentQuery.data
   const submissions = submissionsQuery.data ?? []
 
@@ -61,8 +77,8 @@ export function AssignmentReviewPage() {
           </p>
           <h1 className="mt-3 section-title">{assignment.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Review AI output student by student, adjust scores or feedback, then finalize
-            results and export a CSV for the assignment.
+            Review AI output student by student, adjust scores or feedback, then finalize results
+            and export a CSV for the assignment.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold">
@@ -86,8 +102,8 @@ export function AssignmentReviewPage() {
             Download a simple CSV once the marks look right.
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            The export includes each student’s status, total score, and per-question
-            score and feedback columns.
+            The export includes each student’s status, total score, and per-question score and
+            feedback columns.
           </p>
           <a
             href={`/api/assignments/${assignment.id}/export.csv`}
@@ -117,16 +133,22 @@ export function AssignmentReviewPage() {
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusTone(submission.grading_status)}`}
                 >
-                  {submission.grading_status.replace('_', ' ')}
+                  {formatStatus(submission.grading_status)}
                 </span>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-3 text-xs font-semibold text-slate-500">
                 <span className="rounded-full bg-slate-100 px-3 py-1">
-                  {submission.total_score ? `${submission.total_score} total` : 'Not graded'}
+                  {submission.total_score !== null
+                    ? `${submission.total_score} total`
+                    : 'Not graded'}
                 </span>
                 <span className="rounded-full bg-slate-100 px-3 py-1">
-                  {submission.upload_source === 'csv' ? 'CSV import' : 'Manual entry'}
+                  {submission.upload_source === 'csv'
+                    ? 'CSV import'
+                    : submission.upload_source === 'file'
+                      ? 'Uploaded file'
+                      : 'Manual entry'}
                 </span>
               </div>
 
@@ -147,12 +169,6 @@ export function AssignmentReviewPage() {
                 >
                   Open review
                 </Link>
-                <Link
-                  to={`/assignments/${assignment.id}/submissions`}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-                >
-                  Back to submissions
-                </Link>
               </div>
             </article>
           ))}
@@ -163,8 +179,7 @@ export function AssignmentReviewPage() {
             No submissions to review
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-            Add and grade at least one student response before using the review and
-            export tools.
+            Add and grade at least one student response before using the review and export tools.
           </p>
           <Link
             to={`/assignments/${assignment.id}/submissions`}
@@ -174,6 +189,9 @@ export function AssignmentReviewPage() {
           </Link>
         </section>
       )}
+      <WorkflowBack to={`/assignments/${assignment.id}/submissions`}>
+        Back to submissions
+      </WorkflowBack>
     </div>
   )
 }

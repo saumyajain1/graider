@@ -1,4 +1,15 @@
+from django.conf import settings
+from django.db import transaction
 from rest_framework import serializers
+
+from apps.uploads import (
+    check_file_size,
+    check_text_length,
+    delete_name_after_commit,
+    file_api_url,
+    original_name,
+    stored_upload,
+)
 
 from .models import Assignment, QuestionPart
 from .services import extract_text_from_uploaded_file, is_supported_text_upload
@@ -58,16 +69,20 @@ class AssignmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"source_file": "Only .txt and .pdf files are supported."}
             )
+        if uploaded_file is not None:
+            check_file_size(uploaded_file, settings.GRAIDER_MAX_UPLOAD_BYTES)
+        if "raw_assignment_text" in attrs:
+            check_text_length(
+                attrs["raw_assignment_text"],
+                settings.GRAIDER_MAX_ASSIGNMENT_CHARS,
+                "Assignment text",
+            )
 
         if self.instance is None:
             raw_text = attrs.get("raw_assignment_text", "").strip()
             if not raw_text and uploaded_file is None:
                 raise serializers.ValidationError(
-                    {
-                        "raw_assignment_text": (
-                            "Provide assignment text or upload a .txt/.pdf file."
-                        )
-                    }
+                    {"raw_assignment_text": ("Provide assignment text or upload a .txt/.pdf file.")}
                 )
         return attrs
 
@@ -83,23 +98,22 @@ class AssignmentSerializer(serializers.ModelSerializer):
         if not raw_text:
             if not extracted_text:
                 raise serializers.ValidationError(
-                    {
-                        "source_file": (
-                            note or "No extractable text was found in the uploaded file."
-                        )
-                    }
+                    {"source_file": (note or "No extractable text was found in the uploaded file.")}
                 )
             validated_data["raw_assignment_text"] = extracted_text
         validated_data["ingestion_notes"] = note
 
-        assignment = Assignment.objects.create(
+        assignment = Assignment(
             teacher=self.context["request"].user,
             **validated_data,
         )
-
         if uploaded_file is not None:
-            assignment.source_file = uploaded_file
-            assignment.save(update_fields=("source_file", "updated_at"))
+            assignment.source_original_filename = original_name(uploaded_file)
+            with stored_upload(assignment.source_file, uploaded_file):
+                with transaction.atomic():
+                    assignment.save()
+        else:
+            assignment.save()
 
         return assignment
 
@@ -110,43 +124,62 @@ class AssignmentSerializer(serializers.ModelSerializer):
 
         if uploaded_file is not None:
             extracted_text, note = extract_text_from_uploaded_file(uploaded_file)
-            instance.source_file = uploaded_file
             if not raw_text_provided and extracted_text:
                 instance.raw_assignment_text = extracted_text
             if not raw_text_provided and not extracted_text:
                 raise serializers.ValidationError(
-                    {
-                        "source_file": (
-                            note or "No extractable text was found in the uploaded file."
-                        )
-                    }
+                    {"source_file": (note or "No extractable text was found in the uploaded file.")}
                 )
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.ingestion_notes = note
-        instance.save()
+        if uploaded_file is not None:
+            old_storage = instance.source_file.storage
+            old_name = instance.source_file.name
+            instance.source_original_filename = original_name(uploaded_file)
+            with stored_upload(instance.source_file, uploaded_file):
+                with transaction.atomic():
+                    instance.save()
+                    delete_name_after_commit(old_storage, old_name)
+        else:
+            instance.save()
         return instance
 
-    def get_source_file_url(self, obj):
-        return obj.source_file.url if obj.source_file else None
+    def get_source_file_url(self, obj) -> str | None:
+        return (
+            file_api_url("assignment-source-file", assignment_id=obj.id)
+            if obj.source_file
+            else None
+        )
 
-    def get_source_filename(self, obj):
-        return obj.source_file.name.split("/")[-1] if obj.source_file else None
+    def get_source_filename(self, obj) -> str | None:
+        return (
+            (obj.source_original_filename or obj.source_file.name.split("/")[-1])
+            if obj.source_file
+            else None
+        )
 
-    def get_status(self, obj):
+    def get_status(self, obj) -> str:
         return obj.workflow_status
 
-    def get_question_count(self, obj):
+    def get_question_count(self, obj) -> int:
         return obj.question_parts.filter(part_type=QuestionPart.PartType.QUESTION).count()
 
-    def get_submission_count(self, obj):
+    def get_submission_count(self, obj) -> int:
         submissions = getattr(obj, "submissions", None)
         return submissions.count() if submissions is not None else 0
 
 
 class QuestionPartSerializer(serializers.ModelSerializer):
+    max_marks = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        allow_null=True,
+        required=False,
+        help_text="Positive total marks are required for scored questions. Context parts are unscored.",
+    )
     display_label = serializers.SerializerMethodField()
 
     class Meta:
@@ -177,6 +210,19 @@ class QuestionPartSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
+    def validate(self, attrs):
+        part_type = attrs.get(
+            "part_type", getattr(self.instance, "part_type", QuestionPart.PartType.QUESTION)
+        )
+        marks = attrs.get("max_marks", getattr(self.instance, "max_marks", None))
+        if part_type == QuestionPart.PartType.QUESTION and (marks is None or marks <= 0):
+            raise serializers.ValidationError(
+                {"max_marks": "Enter total marks greater than zero for each question."}
+            )
+        if part_type == QuestionPart.PartType.CONTEXT:
+            attrs["max_marks"] = None
+        return attrs
+
     def create(self, validated_data):
         assignment = self.context["assignment"]
         display_order = assignment.question_parts.count()
@@ -190,5 +236,13 @@ class QuestionPartSerializer(serializers.ModelSerializer):
             **validated_data,
         )
 
-    def get_display_label(self, obj):
+    def get_display_label(self, obj) -> str:
         return obj.display_label
+
+
+class QuestionGenerateSerializer(serializers.Serializer):
+    replace_existing = serializers.BooleanField(default=True)
+
+
+class QuestionReorderSerializer(serializers.Serializer):
+    question_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)

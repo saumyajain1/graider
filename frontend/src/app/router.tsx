@@ -9,6 +9,7 @@ import { AssignmentReviewPage } from '../pages/AssignmentReviewPage'
 import { AssignmentRubricPage } from '../pages/AssignmentRubricPage'
 import { AssignmentSubmissionsPage } from '../pages/AssignmentSubmissionsPage'
 import { DashboardPage } from '../pages/DashboardPage'
+import { ProfilePage } from '../pages/ProfilePage'
 import { SubmissionReviewPage } from '../pages/SubmissionReviewPage'
 
 export const router = createBrowserRouter([
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
     element: <ProtectedLayout />,
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: 'profile', element: <ProfilePage /> },
       { path: 'assignments/new', element: <AssignmentCreatePage /> },
       { path: 'assignments/:assignmentId', element: <Navigate to="overview" replace /> },
       { path: 'assignments/:assignmentId/overview', element: <AssignmentOverviewPage /> },

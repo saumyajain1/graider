@@ -212,57 +212,57 @@ The backend exposes a REST API under `/api`.
 
 ### Authentication
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/auth/register` | Create a teacher account |
-| `POST` | `/api/auth/login` | Start a teacher session |
-| `POST` | `/api/auth/logout` | End the current session |
-| `GET` | `/api/auth/me` | Return the current teacher |
+| Method | Endpoint             | Purpose                    |
+| ------ | -------------------- | -------------------------- |
+| `POST` | `/api/auth/register` | Create a teacher account   |
+| `POST` | `/api/auth/login`    | Start a teacher session    |
+| `POST` | `/api/auth/logout`   | End the current session    |
+| `GET`  | `/api/auth/me`       | Return the current teacher |
 
 ### Assignments and question parts
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/assignments/` | List the teacher's assignments |
-| `POST` | `/api/assignments/` | Create an assignment |
-| `GET` | `/api/assignments/:assignmentId` | Fetch one assignment |
-| `PATCH` | `/api/assignments/:assignmentId` | Update an assignment |
-| `DELETE` | `/api/assignments/:assignmentId` | Delete an assignment |
-| `GET` | `/api/assignments/:assignmentId/questions` | List question parts |
-| `POST` | `/api/assignments/:assignmentId/questions` | Create a question part |
-| `POST` | `/api/assignments/:assignmentId/questions/generate` | Generate question parts |
-| `POST` | `/api/assignments/:assignmentId/questions/reorder` | Reorder question parts |
-| `PATCH` | `/api/assignments/questions/:questionId` | Update a question part |
-| `DELETE` | `/api/assignments/questions/:questionId` | Delete a question part |
+| Method   | Endpoint                                            | Purpose                        |
+| -------- | --------------------------------------------------- | ------------------------------ |
+| `GET`    | `/api/assignments/`                                 | List the teacher's assignments |
+| `POST`   | `/api/assignments/`                                 | Create an assignment           |
+| `GET`    | `/api/assignments/:assignmentId`                    | Fetch one assignment           |
+| `PATCH`  | `/api/assignments/:assignmentId`                    | Update an assignment           |
+| `DELETE` | `/api/assignments/:assignmentId`                    | Delete an assignment           |
+| `GET`    | `/api/assignments/:assignmentId/questions`          | List question parts            |
+| `POST`   | `/api/assignments/:assignmentId/questions`          | Create a question part         |
+| `POST`   | `/api/assignments/:assignmentId/questions/generate` | Generate question parts        |
+| `POST`   | `/api/assignments/:assignmentId/questions/reorder`  | Reorder question parts         |
+| `PATCH`  | `/api/assignments/questions/:questionId`            | Update a question part         |
+| `DELETE` | `/api/assignments/questions/:questionId`            | Delete a question part         |
 
 ### Reference answers and rubric
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/assignments/:assignmentId/reference-answers` | List reference answers |
-| `POST` | `/api/assignments/:assignmentId/reference-answers` | Create a manual reference answer |
-| `POST` | `/api/assignments/:assignmentId/reference-answers/generate` | Generate reference answers |
-| `PATCH` | `/api/reference-answers/:referenceAnswerId` | Update a reference answer |
-| `GET` | `/api/assignments/:assignmentId/rubric` | List rubric groups |
-| `POST` | `/api/assignments/:assignmentId/rubric` | Create a rubric criterion |
-| `POST` | `/api/assignments/:assignmentId/rubric/generate` | Generate rubric criteria |
-| `PATCH` | `/api/rubric-criteria/:criterionId` | Update a rubric criterion |
-| `DELETE` | `/api/rubric-criteria/:criterionId` | Delete a rubric criterion |
+| Method   | Endpoint                                                    | Purpose                          |
+| -------- | ----------------------------------------------------------- | -------------------------------- |
+| `GET`    | `/api/assignments/:assignmentId/reference-answers`          | List reference answers           |
+| `POST`   | `/api/assignments/:assignmentId/reference-answers`          | Create a manual reference answer |
+| `POST`   | `/api/assignments/:assignmentId/reference-answers/generate` | Generate reference answers       |
+| `PATCH`  | `/api/reference-answers/:referenceAnswerId`                 | Update a reference answer        |
+| `GET`    | `/api/assignments/:assignmentId/rubric`                     | List rubric groups               |
+| `POST`   | `/api/assignments/:assignmentId/rubric`                     | Create a rubric criterion        |
+| `POST`   | `/api/assignments/:assignmentId/rubric/generate`            | Generate rubric criteria         |
+| `PATCH`  | `/api/rubric-criteria/:criterionId`                         | Update a rubric criterion        |
+| `DELETE` | `/api/rubric-criteria/:criterionId`                         | Delete a rubric criterion        |
 
 ### Submissions, grading, and export
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/assignments/:assignmentId/submissions` | List submissions |
-| `POST` | `/api/assignments/:assignmentId/submissions` | Create a submission |
-| `POST` | `/api/assignments/:assignmentId/submissions/import-csv` | Import submissions from CSV |
-| `GET` | `/api/submissions/:submissionId` | Fetch one submission |
-| `POST` | `/api/submissions/:submissionId/grade` | Grade one submission |
-| `POST` | `/api/assignments/:assignmentId/grade-all` | Grade all submissions |
-| `GET` | `/api/submissions/:submissionId/grading` | Fetch nested grading detail |
-| `PATCH` | `/api/grading-results/:gradingResultId` | Save teacher review changes |
-| `POST` | `/api/submissions/:submissionId/finalize` | Finalize one submission |
-| `GET` | `/api/assignments/:assignmentId/export.csv` | Export final results |
+| Method  | Endpoint                                                | Purpose                     |
+| ------- | ------------------------------------------------------- | --------------------------- |
+| `GET`   | `/api/assignments/:assignmentId/submissions`            | List submissions            |
+| `POST`  | `/api/assignments/:assignmentId/submissions`            | Create a submission         |
+| `POST`  | `/api/assignments/:assignmentId/submissions/import-csv` | Import submissions from CSV |
+| `GET`   | `/api/submissions/:submissionId`                        | Fetch one submission        |
+| `POST`  | `/api/submissions/:submissionId/grade`                  | Grade one submission        |
+| `POST`  | `/api/assignments/:assignmentId/grade-all`              | Grade all submissions       |
+| `GET`   | `/api/submissions/:submissionId/grading`                | Fetch nested grading detail |
+| `PATCH` | `/api/grading-results/:gradingResultId`                 | Save teacher review changes |
+| `POST`  | `/api/submissions/:submissionId/finalize`               | Finalize one submission     |
+| `GET`   | `/api/assignments/:assignmentId/export.csv`             | Export final results        |
 
 ## Security and Privacy Boundaries
 

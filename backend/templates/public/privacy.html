@@ -1,0 +1,100 @@
+<!-- prettier-ignore -->
+{% extends "public/base.html" %}
+{% block title %}Privacy policy | Graider{% endblock %}
+{% block content %}
+<article class="card policy">
+  <p class="eyebrow">Last updated October 1, 2026</p>
+  <h1>Privacy policy</h1>
+  <p>
+    Graider is a personal project maintained by Saumya Jain. This policy describes the information
+    used by the hosted Graider app and how to contact its maintainer.
+  </p>
+
+  <h2>Information Graider stores</h2>
+  <p>
+    Account information includes your name, email address, and sign-in records. Password accounts
+    store a password hash, not the original password. When you use Google, Graider also stores your
+    Google account identifier and verified-email information.
+  </p>
+  <p>
+    Your workspace contains the assignments, uploaded files, questions, reference answers, rubrics,
+    student names or identifiers, submissions, scores, and feedback you provide or generate. Graider
+    also records AI usage and request metadata to enforce limits and troubleshoot failures. Hosting
+    services may record connection information, such as IP addresses and request paths, in
+    operational logs.
+  </p>
+
+  <h2>Google sign-in and account linking</h2>
+  <p>
+    Google sign-in requests only basic identity information: your name, email address, and profile.
+    Graider uses this information to create or authenticate your account, display your name, and
+    connect Google to an existing account when you explicitly choose to do so.
+  </p>
+  <p>
+    Graider does not request access to Gmail, Google Drive, contacts, or calendars. It does not
+    receive your Google password or store Google access or refresh tokens. Signing out of Graider
+    does not sign you out of Google. You can revoke the app's authorization in your
+    <a href="https://myaccount.google.com/connections">Google account connections</a>.
+  </p>
+
+  <h2>How information is used and shared</h2>
+  <p>
+    Graider uses your information to operate your account and workspace, process uploads, prepare
+    and grade assignments, export results, enforce usage limits, and maintain the service. The
+    maintainer can access stored information when needed to operate the service or handle support
+    requests.
+  </p>
+  <p>
+    The hosted app uses Render for the web service and Neon for its database and private file
+    storage. Google processes sign-in requests. The workspace loads fonts from Google Fonts, which
+    receives browser connection information when the fonts are requested.
+  </p>
+  <p>
+    When you use an AI feature, relevant assignment, question, reference-answer, rubric, or
+    submission text is sent to OpenAI for processing. Graider does not add your Google account
+    identifier or account email to AI prompts, but identifying information included in your
+    assignment or submission text will also be sent. Use sample work and avoid including real
+    student information.
+  </p>
+  <p>
+    These providers handle information according to their own policies:
+    <a href="https://render.com/privacy">Render</a>,
+    <a href="https://neon.com/privacy-policy">Neon</a>,
+    <a href="https://policies.google.com/privacy">Google</a>, and
+    <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>. Graider does not sell account
+    information or add advertising or analytics trackers.
+  </p>
+
+  <h2>Cookies</h2>
+  <p>
+    Graider uses session cookies to keep you signed in and a security cookie to protect account
+    actions against forged requests. Blocking these cookies can prevent sign-in and other account
+    features from working.
+  </p>
+
+  <h2>Retention and deletion</h2>
+  <p>
+    Account and workspace information remains stored until it is removed. You can delete assignments
+    and their associated submissions and uploads in the app. For account deletion or other privacy
+    requests, contact the maintainer below. Removing Google's authorization alone does not delete
+    your Graider account or workspace.
+  </p>
+  <p>
+    Providers may retain backups and operational logs under their own retention policies. Removing
+    data from the active app does not guarantee immediate removal from every provider backup.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    For privacy questions or account-deletion requests, email
+    <a href="mailto:saumyajain1403@gmail.com">saumyajain1403@gmail.com</a>. Use the email associated
+    with your Graider account when requesting changes; ownership must be verified before account
+    data is removed.
+  </p>
+
+  <h2>Policy updates</h2>
+  <p>
+    Changes to how Graider handles information will be reflected on this page, with an updated date.
+  </p>
+</article>
+{% endblock %}
