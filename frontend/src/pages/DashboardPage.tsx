@@ -205,7 +205,7 @@ export function DashboardPage() {
               No assignments yet
             </h3>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-              Create an assignment to get started. Paste your questions or upload a TXT file or PDF.
+              Create an assignment to get started.
             </p>
           </div>
         )}

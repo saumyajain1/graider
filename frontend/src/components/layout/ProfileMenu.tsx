@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { getApiErrorMessage } from '../../api/errors'
 import { useCurrentUser, useLogout } from '../../hooks/useAuth'
+import { GoogleIcon } from '../GoogleIcon'
+import { Icon } from '../Icon'
 
 export function ProfileMenu() {
   const { user } = useCurrentUser()
@@ -52,7 +54,10 @@ export function ProfileMenu() {
           {user?.connected_accounts.length ? (
             user.connected_accounts.map((account) => (
               <div key={account.provider} className="mt-2 text-sm">
-                <p className="font-medium capitalize">{account.provider}</p>
+                <p className="flex items-center gap-2 font-medium capitalize">
+                  {account.provider === 'google' ? <GoogleIcon /> : null}
+                  {account.provider}
+                </p>
                 <p className="break-all text-xs text-slate-500">{account.email}</p>
               </div>
             ))
@@ -63,9 +68,9 @@ export function ProfileMenu() {
         <Link
           to="/profile"
           onClick={() => details.current?.removeAttribute('open')}
-          className="block rounded-xl px-3 py-2 text-sm font-medium transition hover:bg-slate-100"
+          className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition hover:bg-slate-100"
         >
-          Manage account
+          <Icon name="account" /> Manage account
         </Link>
         <button
           type="button"
@@ -73,8 +78,9 @@ export function ProfileMenu() {
           onClick={() =>
             logout.mutate(undefined, { onSuccess: () => navigate('/login', { replace: true }) })
           }
-          className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 disabled:opacity-60"
+          className="mt-1 flex items-center gap-2 w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 disabled:opacity-60"
         >
+          <Icon name={logout.isPending ? 'spinner' : 'logout'} />
           {logout.isPending ? 'Signing out…' : 'Sign out'}
         </button>
         {logout.isError ? (

@@ -54,6 +54,7 @@ from .services import (
     LLMGenerationError,
     generate_reference_answer,
     generate_rubric_criteria,
+    validate_generated_rubric,
 )
 from .services.openai_client import LLMSpendLimitError, public_llm_error
 from .services.submission_io import (
@@ -325,7 +326,16 @@ class RubricGenerateView(TeacherScopedArtifactView):
 
         references = []
         for question_part in questions:
+            if question_part.max_marks is None or question_part.max_marks <= 0:
+                return Response(
+                    {
+                        "detail": f"Set positive total marks for {question_part.display_label} before generating a rubric."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             try:
+                if not question_part.reference_answer.answer_text.strip():
+                    raise ReferenceAnswer.DoesNotExist
                 references.append((question_part, question_part.reference_answer))
             except ReferenceAnswer.DoesNotExist:
                 return Response(
@@ -339,6 +349,7 @@ class RubricGenerateView(TeacherScopedArtifactView):
         try:
             for question_part, reference_answer in references:
                 parsed = generate_rubric_criteria(question_part, reference_answer.answer_text)
+                validate_generated_rubric(question_part, parsed)
                 prepared.append((question_part, parsed))
         except LLMQuotaExceeded as exc:
             return self.handle_quota_error(exc)

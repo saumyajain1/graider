@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-
-import { QueryError } from '../components/QueryError'
+import { useParams } from 'react-router-dom'
 
 import { getAssignment } from '../api/assignments'
+import { getApiErrorMessage } from '../api/errors'
 import {
   createReferenceAnswer,
   generateReferenceAnswers,
@@ -12,24 +11,40 @@ import {
   updateReferenceAnswer,
   type ReferenceAnswerItem,
 } from '../api/grading'
-import { getApiErrorMessage } from '../api/errors'
+import { AIButton } from '../components/AIButton'
+import { QueryError } from '../components/QueryError'
+import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
+import { WorkflowDraftProvider, useDraft, useDraftSaves } from '../hooks/useDraftSaves'
 
 function ReferenceAnswerEditor({
   item,
   isBusy,
   onGenerate,
   onSave,
+  isGenerating,
 }: {
   item: ReferenceAnswerItem
+  isGenerating: boolean
   isBusy: boolean
   onGenerate: () => void
-  onSave: (answerText: string) => void
+  onSave: (answerText: string) => Promise<unknown>
 }) {
   const [answerText, setAnswerText] = useState(item.answer_text)
 
   useEffect(() => {
     setAnswerText(item.answer_text)
-  }, [item])
+  }, [item.answer_text])
+
+  useDraft(`answer-${item.question_part_id}`, {
+    dirty: answerText !== item.answer_text,
+    validate: () => {
+      if (!answerText.trim())
+        throw new Error(
+          `${item.display_label}: write or generate a reference answer before continuing.`,
+        )
+    },
+    save: () => onSave(answerText),
+  })
 
   return (
     <fieldset
@@ -67,18 +82,16 @@ function ReferenceAnswerEditor({
       <div className="mt-5 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => onSave(answerText)}
+          onClick={() => {
+            void onSave(answerText).catch(() => {})
+          }}
           className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
         >
           Save answer
         </button>
-        <button
-          type="button"
-          onClick={() => onGenerate()}
-          className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-        >
-          Generate with AI
-        </button>
+        <AIButton busy={isGenerating} onClick={() => onGenerate()}>
+          {isGenerating ? 'Generating…' : 'Generate with AI'}
+        </AIButton>
       </div>
     </fieldset>
   )
@@ -87,6 +100,7 @@ function ReferenceAnswerEditor({
 export function AssignmentReferenceAnswersPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
+  const drafts = useDraftSaves()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const assignmentQuery = useQuery({
@@ -167,91 +181,99 @@ export function AssignmentReferenceAnswersPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
-        <div className="rounded-[2rem] border border-slate-200 p-6">
-          <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
-            Reference answers
-          </p>
-          <h1 className="mt-3 section-title">{assignment.title}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            Generate model answers with AI or draft them manually. These answers feed the rubric
-            builder and guide grading.
-          </p>
-        </div>
+    <WorkflowDraftProvider value={drafts}>
+      <div className="space-y-8">
+        <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
+          <div className="rounded-[2rem] border border-slate-200 p-6">
+            <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
+              Reference answers
+            </p>
+            <h1 className="mt-3 section-title">{assignment.title}</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Generate model answers with AI or draft them manually. These answers feed the rubric
+              builder and guide grading.
+            </p>
+          </div>
 
-        <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
-          <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
-            Workflow step
-          </p>
-          <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Prepare the answer key.
-          </h2>
-          <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            If AI generation is unavailable, you can still write every answer manually and continue
-            the workflow.
-          </p>
-          <button
-            type="button"
-            disabled={saveMutation.isPending || generateMutation.isPending}
-            onClick={() => generateMutation.mutate(undefined)}
-            className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100"
+          <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
+            <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
+              Workflow step
+            </p>
+            <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
+              Prepare the answer key.
+            </h2>
+            <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
+              If AI generation is unavailable, you can still write every answer manually and
+              continue the workflow.
+            </p>
+            <AIButton
+              busy={generateMutation.isPending && generateMutation.variables === undefined}
+              disabled={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+              onClick={() => generateMutation.mutate(undefined)}
+              className="mt-6"
+            >
+              {generateMutation.isPending && generateMutation.variables === undefined
+                ? 'Generating...'
+                : 'Generate all answers'}
+            </AIButton>
+          </div>
+        </section>
+
+        {errorMessage ? (
+          <div
+            role="alert"
+            className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
           >
-            {generateMutation.isPending ? 'Generating...' : 'Generate all answers'}
-          </button>
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {answers.length > 0 ? (
+          <section className="space-y-4">
+            {answers.map((item) => (
+              <ReferenceAnswerEditor
+                key={item.question_part_id}
+                item={item}
+                isBusy={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+                isGenerating={
+                  generateMutation.isPending && generateMutation.variables === item.question_part_id
+                }
+                onGenerate={() => {
+                  generateMutation.mutate(item.question_part_id)
+                }}
+                onSave={(answerText) => {
+                  return saveMutation.mutateAsync({ item, answer_text: answerText })
+                }}
+              />
+            ))}
+          </section>
+        ) : (
+          <section className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-8">
+            <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
+              No question parts available
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
+              Add or generate question parts before working on reference answers.
+            </p>
+          </section>
+        )}
+
+        <div className="flex flex-wrap gap-3">
+          <WorkflowBack to={`/assignments/${assignment.id}/questions`}>
+            Back to questions
+          </WorkflowBack>
+          <WorkflowContinue
+            to={`/assignments/${assignment.id}/rubric`}
+            disabled={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+            validate={async () => {
+              if (!(await listReferenceAnswers(assignmentId!)).length)
+                throw new Error('Add questions and reference answers before continuing.')
+            }}
+          >
+            rubric
+          </WorkflowContinue>
         </div>
-      </section>
-
-      {errorMessage ? (
-        <div
-          role="alert"
-          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
-        >
-          {errorMessage}
-        </div>
-      ) : null}
-
-      {answers.length > 0 ? (
-        <section className="space-y-4">
-          {answers.map((item) => (
-            <ReferenceAnswerEditor
-              key={item.question_part_id}
-              item={item}
-              isBusy={saveMutation.isPending || generateMutation.isPending}
-              onGenerate={() => {
-                generateMutation.mutate(item.question_part_id)
-              }}
-              onSave={(answerText) => {
-                saveMutation.mutate({ item, answer_text: answerText })
-              }}
-            />
-          ))}
-        </section>
-      ) : (
-        <section className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-8">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-bold text-slate-950">
-            No question parts available
-          </h2>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-            Add or generate question parts before working on reference answers.
-          </p>
-        </section>
-      )}
-
-      <div className="flex flex-wrap gap-3">
-        <Link
-          to={`/assignments/${assignment.id}/questions`}
-          className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-        >
-          Back to questions
-        </Link>
-        <Link
-          to={`/assignments/${assignment.id}/rubric`}
-          className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-        >
-          Continue to rubric
-        </Link>
       </div>
-    </div>
+    </WorkflowDraftProvider>
   )
 }

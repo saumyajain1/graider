@@ -118,7 +118,7 @@ def build_assignment_results_csv_response(assignment):
             submission.student_name,
             submission.student_identifier,
             submission.grading_status,
-            submission.total_score or "",
+            submission.total_score if submission.total_score is not None else "",
             submission.finalized_at.isoformat() if submission.finalized_at else "",
         ]
         for question in questions:
@@ -127,7 +127,11 @@ def build_assignment_results_csv_response(assignment):
             feedback = ""
             if result is not None:
                 score = (
-                    result.final_score if result.final_score is not None else result.ai_score or ""
+                    result.final_score
+                    if result.final_score is not None
+                    else result.ai_score
+                    if result.ai_score is not None
+                    else ""
                 )
                 feedback = result.final_feedback or result.ai_feedback
             row.extend([score, feedback])

@@ -61,7 +61,21 @@ def validate_submission_ready_for_grading(submission):
     missing_reference_answers = []
     missing_rubric = []
     for question in questions:
+        if question.max_marks is None or question.max_marks <= 0:
+            raise SubmissionNotReadyError(
+                f"Set positive total marks for {question.display_label} before grading."
+            )
+        criteria = list(question.rubric_criteria.all())
+        if criteria and (
+            any(criterion.max_points <= 0 for criterion in criteria)
+            or sum(criterion.max_points for criterion in criteria) != question.max_marks
+        ):
+            raise SubmissionNotReadyError(
+                f"Rubric points for {question.display_label} must total {question.max_marks} marks before grading."
+            )
         try:
+            if not question.reference_answer.answer_text.strip():
+                raise ReferenceAnswer.DoesNotExist
             question.reference_answer
         except ReferenceAnswer.DoesNotExist:
             missing_reference_answers.append(question.part_key)
@@ -196,12 +210,12 @@ def run_grading_pipeline(submission):
                 result, _ = GradingResult.objects.get_or_create(
                     submission=submission,
                     question_part=question,
-                    defaults={"max_score": question.max_marks or Decimal("0")},
+                    defaults={"max_score": question.max_marks},
                 )
                 previous_ai_score = result.ai_score
                 previous_ai_feedback = result.ai_feedback
                 result.ai_score = ai_score
-                result.max_score = question.max_marks or Decimal("0")
+                result.max_score = question.max_marks
                 result.ai_feedback = ai_feedback
                 result.reasoning_summary = reasoning_summary
                 result.confidence_score = confidence_score

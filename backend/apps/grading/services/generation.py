@@ -2,12 +2,13 @@ import json
 import os
 import re
 import unicodedata
+from decimal import Decimal
 from pathlib import Path
 from textwrap import dedent
 
 from apps.assignments.models import Assignment, QuestionPart
 
-from .openai_client import OpenAIChatService
+from .openai_client import LLMGenerationError, OpenAIChatService
 from .schemas import (
     GeneratedQuestionPartSchema,
     GeneratedQuestionSetSchema,
@@ -248,7 +249,7 @@ def append_context_part(parts, parent_label: str, context_chunks: list[str]):
             source_label=parent_label,
             parent_key=parent_label,
             text=text,
-            max_marks=0,
+            max_marks=None,
         )
     )
 
@@ -321,6 +322,8 @@ def parse_structured_pdf_questions(assignment: Assignment):
                 if inline_marks_match
                 else shared_marks
             )
+            if max_marks is None or max_marks <= 0:
+                return None
             if inline_marks_match:
                 block = clean_question_block(INLINE_MARKS_RE.sub("", block))
 
@@ -393,11 +396,21 @@ def repair_generated_question_parts(
         return question_set
 
     original_signature = [
-        (part.part_type, normalize_source_label(part.source_label), part.parent_key or "")
+        (
+            part.part_type,
+            normalize_source_label(part.source_label),
+            part.parent_key or "",
+            part.max_marks,
+        )
         for part in question_set.parts
     ]
     repaired_signature = [
-        (part.part_type, normalize_source_label(part.source_label), part.parent_key or "")
+        (
+            part.part_type,
+            normalize_source_label(part.source_label),
+            part.parent_key or "",
+            part.max_marks,
+        )
         for part in repaired.parts
     ]
     if original_signature != repaired_signature:
@@ -510,7 +523,7 @@ def generate_question_parts(assignment: Assignment):
             - Be conservative and literal with math-heavy documents.
 
             Rules:
-            - Never invent sections, questions, context, or marks that are not present.
+            - Never invent sections, questions, or context that are not present.
             - Keep the source numbering in source_label exactly as closely as possible, such as
               1, 1.1, 1.2, (a), or (b). Do not flatten 1.1 and 1.2 into 1 and 2.
             - Use parent_key for the shared top-level group, such as 1 for 1.1 and 1.2.
@@ -522,7 +535,15 @@ def generate_question_parts(assignment: Assignment):
             - Do not create context entries for due dates, submission instructions, section titles,
               or notes like "each part is worth 3 points".
             - Remove answer blanks such as "Answer: TODO".
-            - If marks are shared across subparts, assign that shared mark value to each graded part.
+            - Preserve explicitly stated marks per question, including "each part is worth" values.
+            - Every scored question must have positive max_marks with at most two decimal places.
+              Read the assignment as a whole. When individual marks are absent, propose reasonable
+              allocations proportional to the complexity and expected work of each question.
+              If an overall assignment or section total is stated, distribute its remaining marks
+              across unmarked questions while preserving explicit allocations and matching that total.
+              Otherwise propose a coherent scale (for example 1 for recall, 3 for explanation,
+              5 for multi-step analysis). These allocations will be reviewed by the teacher.
+            - Context entries are unscored: set their max_marks to null.
             - Repair obvious PDF extraction artifacts conservatively: fix broken spacing, line wraps,
               and hyphenation, but preserve mathematical meaning.
             - Prefer fewer, high-precision question parts over many speculative ones.
@@ -581,7 +602,7 @@ def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text:
     service = OpenAIChatService()
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
-    return service.parse(
+    parsed = service.parse(
         user=question_part.assignment.teacher,
         operation="rubric_generation",
         model=ARTIFACT_MODEL,
@@ -589,8 +610,9 @@ def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text:
         system_prompt=dedent(
             """
             You produce concise grading criteria for a single question part.
-            Create criteria that are concrete, instructor-friendly, and suitable for an MVP grading tool.
-            If max marks are provided, keep the total criterion points aligned as closely as possible.
+            Create criteria that are concrete and instructor-friendly.
+            Each criterion must have positive points with at most two decimal places.
+            The sum of all criterion points must equal the question max marks exactly.
             """
         ).strip(),
         user_prompt=dedent(
@@ -610,3 +632,21 @@ def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text:
             """
         ).strip(),
     )
+
+    validate_generated_rubric(question_part, parsed)
+    return parsed
+
+
+def validate_generated_rubric(question_part, parsed):
+    points = [Decimal(str(criterion.max_points)) for criterion in parsed.criteria]
+    if (
+        question_part.max_marks is None
+        or question_part.max_marks <= 0
+        or not points
+        or any(
+            not point.is_finite() or point <= 0 or point != point.quantize(Decimal("0.01"))
+            for point in points
+        )
+        or sum(points) != question_part.max_marks
+    ):
+        raise LLMGenerationError("Generated rubric points do not match the question total.")

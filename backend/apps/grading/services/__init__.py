@@ -2,6 +2,7 @@ from .generation import (
     generate_question_parts,
     generate_reference_answer,
     generate_rubric_criteria,
+    validate_generated_rubric,
 )
 from .grading_pipeline import grade_question_part, map_submission_answers
 from .openai_client import LLMConfigurationError, LLMGenerationError
@@ -14,4 +15,5 @@ __all__ = [
     "generate_reference_answer",
     "generate_rubric_criteria",
     "map_submission_answers",
+    "validate_generated_rubric",
 ]

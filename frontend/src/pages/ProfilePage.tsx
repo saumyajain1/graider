@@ -1,5 +1,6 @@
 import { AuthNotice } from '../components/AuthNotice'
 import { GoogleButton } from '../components/GoogleButton'
+import { GoogleIcon } from '../components/GoogleIcon'
 import { useCurrentUser } from '../hooks/useAuth'
 
 export function ProfilePage() {
@@ -30,7 +31,10 @@ export function ProfilePage() {
         {googleAccount ? (
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div>
-              <p className="font-medium">Google</p>
+              <p className="flex items-center gap-2 font-medium">
+                <GoogleIcon />
+                Google
+              </p>
               <p className="mt-1 break-all text-sm text-slate-600">{googleAccount.email}</p>
             </div>
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">

@@ -77,3 +77,12 @@ button:disabled {
     @apply text-2xl font-bold tracking-tight text-slate-950;
   }
 }
+
+@layer components {
+  .ai-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-purple-500 bg-purple-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .workflow-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-purple-700 hover:text-purple-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}

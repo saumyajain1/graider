@@ -173,6 +173,13 @@ class AssignmentSerializer(serializers.ModelSerializer):
 
 
 class QuestionPartSerializer(serializers.ModelSerializer):
+    max_marks = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        allow_null=True,
+        required=False,
+        help_text="Positive total marks are required for scored questions. Context parts are unscored.",
+    )
     display_label = serializers.SerializerMethodField()
 
     class Meta:
@@ -202,6 +209,19 @@ class QuestionPartSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def validate(self, attrs):
+        part_type = attrs.get(
+            "part_type", getattr(self.instance, "part_type", QuestionPart.PartType.QUESTION)
+        )
+        marks = attrs.get("max_marks", getattr(self.instance, "max_marks", None))
+        if part_type == QuestionPart.PartType.QUESTION and (marks is None or marks <= 0):
+            raise serializers.ValidationError(
+                {"max_marks": "Enter total marks greater than zero for each question."}
+            )
+        if part_type == QuestionPart.PartType.CONTEXT:
+            attrs["max_marks"] = None
+        return attrs
 
     def create(self, validated_data):
         assignment = self.context["assignment"]
