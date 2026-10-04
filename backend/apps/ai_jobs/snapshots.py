@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+from copy import deepcopy
 from decimal import Decimal
 from pathlib import Path
 
@@ -27,6 +28,23 @@ def fingerprint(value):
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     ).hexdigest()
+
+
+def inputs_unchanged(original, current):
+    """Independent artifact jobs guard their own targets and all question context."""
+    if original["operation"] not in (AIJob.Operation.REFERENCES, AIJob.Operation.RUBRIC):
+        return fingerprint(original) == fingerprint(current)
+    # Freeze admission's targets: a missing-only job must not gain new work later.
+    targets = {int(key.rsplit(":", 1)[-1]) for key in execution_plan(original)[0]}
+    projected = []
+    for snapshot in (original, current):
+        value = deepcopy(snapshot)
+        for part in value["parts"]:
+            if part["id"] not in targets:
+                part["reference"] = None
+                part["rubric"] = []
+        projected.append(value)
+    return fingerprint(projected[0]) == fingerprint(projected[1])
 
 
 def ai_configuration():

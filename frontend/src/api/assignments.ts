@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { aiAction } from './jobs'
 
 export type Assignment = {
   id: number
@@ -134,9 +135,8 @@ export function reorderQuestions(assignmentId: string, questionIds: number[]) {
 }
 
 export function generateQuestions(assignmentId: string, replaceExisting = true) {
-  return apiRequest<QuestionPart[]>(`/api/assignments/${assignmentId}/questions/generate`, {
-    method: 'POST',
-    body: JSON.stringify({ replace_existing: replaceExisting }),
+  return aiAction<QuestionPart[]>(`/api/assignments/${assignmentId}/questions/generate`, {
+    replace_existing: replaceExisting,
   })
 }
 

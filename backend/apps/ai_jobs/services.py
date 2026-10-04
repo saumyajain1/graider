@@ -18,7 +18,13 @@ from .models import (
     AIJobTarget,
     JobState,
 )
-from .snapshots import SNAPSHOT_VERSION, capture_inputs, execution_plan, fingerprint
+from .snapshots import (
+    SNAPSHOT_VERSION,
+    capture_inputs,
+    execution_plan,
+    fingerprint,
+    inputs_unchanged,
+)
 
 
 class JobConflict(APIException):
@@ -33,7 +39,7 @@ class QueueFull(APIException):
 
 class WorkerUnavailable(APIException):
     status_code = 503
-    default_detail = "Background AI execution is not available in this release."
+    default_detail = "The background AI worker is unavailable. Please try again shortly."
 
 
 def lock_coordinator():
@@ -317,7 +323,9 @@ def retry_job(*, owner, job_id, confirm_possible_charge=False):
                     child.submission,
                     snapshot["configuration"],
                 )
-                if fingerprint(current) != child.input_fingerprint:
+                if fingerprint(snapshot) != child.input_fingerprint or not inputs_unchanged(
+                    snapshot, current
+                ):
                     stale.append(child)
             except ValidationError:
                 stale.append(child)

@@ -1,4 +1,5 @@
 import { ApiError, apiRequest } from './client'
+import { aiAction } from './jobs'
 import { isSubmissionGrading } from './reviewData'
 
 export type ReferenceAnswerItem = {
@@ -152,12 +153,9 @@ export function generateReferenceAnswers(
   assignmentId: string,
   payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
-  return apiRequest<ReferenceAnswerItem[]>(
+  return aiAction<ReferenceAnswerItem[]>(
     `/api/assignments/${assignmentId}/reference-answers/generate`,
-    {
-      method: 'POST',
-      body: JSON.stringify(payload ?? {}),
-    },
+    payload ?? {},
   )
 }
 
@@ -200,10 +198,10 @@ export function generateRubric(
   assignmentId: string,
   payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
-  return apiRequest<RubricQuestion[]>(`/api/assignments/${assignmentId}/rubric/generate`, {
-    method: 'POST',
-    body: JSON.stringify(payload ?? {}),
-  })
+  return aiAction<RubricQuestion[]>(
+    `/api/assignments/${assignmentId}/rubric/generate`,
+    payload ?? {},
+  )
 }
 
 export function listSubmissions(assignmentId: string) {
@@ -254,18 +252,12 @@ export function getSubmission(submissionId: number) {
   return apiRequest<StudentSubmission>(`/api/submissions/${submissionId}`)
 }
 
-export function gradeSubmission(submissionId: number) {
-  return apiRequest<StudentSubmission>(`/api/submissions/${submissionId}/grade`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  })
+export function gradeSubmission(submissionId: number, regrade = false) {
+  return aiAction<StudentSubmission>(`/api/submissions/${submissionId}/grade`, { regrade })
 }
 
-export function gradeAllSubmissions(assignmentId: string) {
-  return apiRequest<GradeAllResponse>(`/api/assignments/${assignmentId}/grade-all`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  })
+export function gradeAllSubmissions(assignmentId: string, regrade = false) {
+  return aiAction<GradeAllResponse>(`/api/assignments/${assignmentId}/grade-all`, { regrade })
 }
 
 export async function getSubmissionGrading(submissionId: number) {

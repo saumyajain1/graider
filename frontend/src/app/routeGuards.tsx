@@ -7,6 +7,7 @@ import { useCurrentUser } from '../hooks/useAuth'
 import { useDraftSaves, WorkflowDraftProvider } from '../hooks/useDraftSaves'
 import { UnsavedChangesGuard } from '../components/UnsavedChangesGuard'
 import { LoginPage } from '../pages/LoginPage'
+import { AIJobsProvider } from '../components/AIJobsProvider'
 
 export function ProtectedLayout() {
   const drafts = useDraftSaves()
@@ -43,11 +44,13 @@ export function ProtectedLayout() {
 
   return (
     <WorkflowDraftProvider value={drafts}>
-      <UnsavedChangesGuard>
-        <AppShell>
-          <Outlet />
-        </AppShell>
-      </UnsavedChangesGuard>
+      <AIJobsProvider key={user.id} userId={user.id}>
+        <UnsavedChangesGuard>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+        </UnsavedChangesGuard>
+      </AIJobsProvider>
     </WorkflowDraftProvider>
   )
 }

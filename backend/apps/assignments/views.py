@@ -9,6 +9,9 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai_jobs.admission import background_response
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.serializers import JobDetailSerializer
 from apps.grading.services import (
     LLMConfigurationError,
     LLMGenerationError,
@@ -157,7 +160,10 @@ class QuestionListCreateView(TeacherScopedView):
 
 @extend_schema_view(
     post=api_schema(
-        request=QuestionGenerateSerializer, response=QuestionPartSerializer(many=True), ai=True
+        request=QuestionGenerateSerializer,
+        response={200: QuestionPartSerializer(many=True), 202: JobDetailSerializer},
+        ai=True,
+        errors={409: OpenApiTypes.OBJECT},
     ),
 )
 class QuestionGenerateView(TeacherScopedView):
@@ -168,6 +174,11 @@ class QuestionGenerateView(TeacherScopedView):
         serializer = QuestionGenerateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         replace_existing = serializer.validated_data["replace_existing"]
+        receipt = background_response(
+            request, AIJob.Operation.QUESTIONS, assignment, options=serializer.validated_data
+        )
+        if receipt is not None:
+            return receipt
 
         if not assignment.raw_assignment_text.strip():
             return Response(

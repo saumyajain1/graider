@@ -1,5 +1,5 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import serializers
 
 
@@ -21,6 +21,15 @@ def api_schema(*, response=None, code=200, request=None, ai=False, **kwargs):
     }
     responses.update(response if isinstance(response, dict) else {code: response})
     if ai:
+        kwargs["parameters"] = [
+            *kwargs.get("parameters", []),
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                description="Optional unique action key. Background mode replays the same job for repeated identical requests.",
+            ),
+        ]
         responses.update(
             {
                 429: OpenApiResponse(

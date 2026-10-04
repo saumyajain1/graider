@@ -4,6 +4,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 
 import { ProfileMenu } from './ProfileMenu'
 import { PublicLinks } from '../PublicLinks'
+import { AIJobsPanel } from '../AIJobsPanel'
 
 type NavigationItem = { label: string; to: string | null }
 
@@ -117,6 +118,7 @@ export function AppShell({ children }: PropsWithChildren) {
                   Assignment #{assignmentId}
                 </div>
               ) : null}
+              <AIJobsPanel />
               <ProfileMenu />
             </div>
           </header>

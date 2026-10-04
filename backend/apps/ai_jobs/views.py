@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from config.schema import APIErrorSerializer, api_schema
 
-from .models import AIJob
+from .models import ACTIVE_STATES, AIJob
 from .runtime import notify_worker
 from .serializers import (
     JobDetailSerializer,
@@ -31,9 +31,14 @@ class JobListView(ListAPIView):
         filters = JobFilterSerializer(data=self.request.query_params)
         filters.is_valid(raise_exception=True)
         # Batch children are discoverable through their parent's detail endpoint.
-        return AIJob.objects.filter(owner=self.request.user, parent__isnull=True).filter(
-            **filters.validated_data
+        values = dict(filters.validated_data)
+        active_only = values.pop("active_only")
+        queryset = AIJob.objects.filter(owner=self.request.user, parent__isnull=True).filter(
+            **values
         )
+        if active_only:
+            queryset = queryset.filter(state__in=ACTIVE_STATES)
+        return queryset.select_related("assignment", "submission").prefetch_related("steps")
 
     @api_schema(
         response=JobSummarySerializer(many=True),
@@ -52,7 +57,13 @@ class OwnedJobView(GenericAPIView):
     lookup_url_kwarg = "job_id"
 
     def get_queryset(self):
-        return AIJob.objects.filter(owner=self.request.user).prefetch_related("children")
+        return (
+            AIJob.objects.filter(owner=self.request.user)
+            .select_related("assignment", "submission")
+            .prefetch_related(
+                "steps", "children__steps", "children__assignment", "children__submission"
+            )
+        )
 
 
 class JobDetailView(OwnedJobView):

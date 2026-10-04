@@ -628,3 +628,55 @@ class ExecutionTests(JobFixtures, TransactionTestCase):
         self.assertFalse(AIJob.objects.filter(pk=job.id).exists())
         self.assertEqual(LLMUsage.objects.get().total_tokens, 130)
         self.assertEqual(LLMUsage.objects.get().status, "succeeded")
+
+    def test_independent_reference_jobs_both_publish(self):
+        second = self.make_question("Q2")
+        jobs = [
+            self.enqueue(
+                "reference_answers",
+                options={"question_part_id": question.id, "replace_existing": True},
+            )
+            for question in (self.question, second)
+        ]
+        self.drain()
+        for job in jobs:
+            job.refresh_from_db()
+            self.assertEqual(job.state, "succeeded")
+        self.assertEqual(len(self.calls), 2)
+        second.refresh_from_db()
+        self.assertEqual(second.reference_answer.answer_text, "New model answer")
+
+    def test_independent_rubric_jobs_both_publish(self):
+        second = self.make_question("Q2")
+        jobs = [
+            self.enqueue(
+                "rubric", options={"question_part_id": question.id, "replace_existing": True}
+            )
+            for question in (self.question, second)
+        ]
+        self.drain()
+        for job in jobs:
+            job.refresh_from_db()
+            self.assertEqual(job.state, "succeeded")
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(second.rubric_criteria.get().title, "New criterion")
+
+    def test_target_reference_edit_still_supersedes_generation(self):
+        job = self.enqueue(
+            "reference_answers",
+            options={"question_part_id": self.question.id, "replace_existing": True},
+        )
+
+        def edit_target(kwargs):
+            answer = self.question.reference_answer
+            answer.answer_text = "Teacher changed this while AI ran"
+            answer.save()
+
+        self.callback = edit_target
+        self.drain()
+        job.refresh_from_db()
+        self.assertEqual(job.state, "superseded")
+        self.question.refresh_from_db()
+        self.assertEqual(
+            self.question.reference_answer.answer_text, "Teacher changed this while AI ran"
+        )

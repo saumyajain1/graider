@@ -15,6 +15,10 @@ import {
   listRubric,
   type StudentSubmission,
 } from '../api/grading'
+import { isJobReceipt } from '../api/jobs'
+import { useAIJobs } from '../hooks/useAIJobs'
+import { useConfirmation } from '../hooks/useConfirmation'
+import { ReplacementConfirmation } from '../components/ReplacementConfirmation'
 import { AIButton } from '../components/AIButton'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
@@ -36,6 +40,9 @@ export function AssignmentSubmissionsPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const jobs = useAIJobs()
+  const confirmation = useConfirmation()
+  const batchJob = jobs.find('grade_batch', assignmentId)
   const [manualForm, setManualForm] = useState({
     student_name: '',
     student_identifier: '',
@@ -159,8 +166,20 @@ export function AssignmentSubmissionsPage() {
   })
 
   const gradeMutation = useMutation({
-    mutationFn: (submissionId: number) => gradeSubmission(submissionId),
+    mutationFn: (submissionId: number) => {
+      const submission = submissionsQuery.data?.find((row) => row.id === submissionId)
+      return gradeSubmission(
+        submissionId,
+        Boolean(submission && !['pending', 'failed'].includes(submission.grading_status)),
+      )
+    },
     onSuccess: async (submission) => {
+      if (isJobReceipt(submission)) {
+        jobs.track(submission)
+        setErrorMessage(null)
+        setStatusMessage(`Grading queued for ${submission.student_name}.`)
+        return
+      }
       setErrorMessage(null)
       setStatusMessage(`Graded ${submission.student_name}.`)
       await refreshAssignmentData()
@@ -168,6 +187,7 @@ export function AssignmentSubmissionsPage() {
     onError: async (error) => {
       setStatusMessage(null)
       setErrorMessage(getApiErrorMessage(error))
+      jobs.refresh()
       await refreshAssignmentData()
     },
   })
@@ -175,6 +195,14 @@ export function AssignmentSubmissionsPage() {
   const gradeAllMutation = useMutation({
     mutationFn: () => gradeAllSubmissions(assignmentId!),
     onSuccess: async (result) => {
+      if (isJobReceipt(result)) {
+        jobs.track(result)
+        setErrorMessage(null)
+        setStatusMessage(
+          `Queued ${result.children?.length ?? 0} students. Each complete result will appear independently.`,
+        )
+        return
+      }
       setErrorMessage(null)
       setStatusMessage(
         `Graded ${result.graded_count} submission${result.graded_count === 1 ? '' : 's'} with ${result.failed_count} failure${result.failed_count === 1 ? '' : 's'}.`,
@@ -184,6 +212,7 @@ export function AssignmentSubmissionsPage() {
     onError: async (error) => {
       setStatusMessage(null)
       setErrorMessage(getApiErrorMessage(error))
+      jobs.refresh()
       await refreshAssignmentData()
     },
   })
@@ -254,6 +283,12 @@ export function AssignmentSubmissionsPage() {
 
   return (
     <WorkflowDraftProvider value={drafts}>
+      <ReplacementConfirmation
+        confirmation={confirmation}
+        titleText="Regrade this submission?"
+        confirmLabel="Regrade"
+        cancelLabel="Keep current grades"
+      />
       <div className="space-y-8">
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[2rem] border border-slate-200 p-6">
@@ -292,6 +327,7 @@ export function AssignmentSubmissionsPage() {
               Review the results and retry any submissions that need attention.
             </p>
             <AIButton
+              job={batchJob}
               busy={gradeAllMutation.isPending}
               disabled={
                 drafts.isSaving ||
@@ -300,7 +336,8 @@ export function AssignmentSubmissionsPage() {
                 !gradingReady ||
                 submissions.length === 0 ||
                 gradeAllMutation.isPending ||
-                gradeMutation.isPending
+                gradeMutation.isPending ||
+                jobs.hasOperation('grade_submission', assignmentId)
               }
               onClick={() => gradeAllMutation.mutate()}
               className="mt-6"
@@ -588,6 +625,7 @@ export function AssignmentSubmissionsPage() {
                   submission.grading_status === 'grading'
                 return (
                   <AIButton
+                    job={jobs.forSubmission(submission.id)}
                     busy={busy}
                     disabled={
                       drafts.isSaving ||
@@ -596,9 +634,19 @@ export function AssignmentSubmissionsPage() {
                       !gradingReady ||
                       gradeMutation.isPending ||
                       gradeAllMutation.isPending ||
-                      submission.grading_status === 'grading'
+                      submission.grading_status === 'grading' ||
+                      submission.grading_status === 'finalized'
                     }
-                    onClick={() => gradeMutation.mutate(submission.id)}
+                    onClick={async () => {
+                      if (
+                        ['graded', 'reviewed'].includes(submission.grading_status) &&
+                        !(await confirmation.ask(
+                          'Replace the AI grading for this student? Current results remain available until grading succeeds; teacher overrides are preserved.',
+                        ))
+                      )
+                        return
+                      gradeMutation.mutate(submission.id)
+                    }}
                   >
                     {busy ? 'Grading…' : getGradeActionLabel(submission.grading_status)}
                   </AIButton>

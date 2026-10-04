@@ -14,6 +14,9 @@ import {
   type RubricCriterion,
   type RubricQuestion,
 } from '../api/grading'
+import { isJobReceipt } from '../api/jobs'
+import type { AIJob } from '../api/jobs'
+import { useAIJobs } from '../hooks/useAIJobs'
 import { AIButton } from '../components/AIButton'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { ReplacementConfirmation } from '../components/ReplacementConfirmation'
@@ -111,12 +114,14 @@ function RubricQuestionSection({
   isBusy,
   onGenerate,
   isGenerating,
+  job,
   replacementVersion,
   onCreate,
   onUpdate,
   onDelete,
 }: {
   group: RubricQuestion
+  job?: AIJob
   isGenerating: boolean
   replacementVersion: number
   isBusy: boolean
@@ -177,6 +182,7 @@ function RubricQuestionSection({
             ) / 100}
           </span>
           <AIButton
+            job={job}
             busy={isGenerating}
             onClick={async () => {
               if (await onGenerate())
@@ -274,6 +280,8 @@ export function AssignmentRubricPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const jobs = useAIJobs()
+  const bulkJob = jobs.find('rubric', assignmentId)
   const confirmation = useConfirmation()
   const [replacementVersions, setReplacementVersions] = useState<Record<number, number>>({})
   const [generationMessage, setGenerationMessage] = useState<string | null>(null)
@@ -340,6 +348,20 @@ export function AssignmentRubricPage() {
         replace_existing: target.replace,
       }),
     onSuccess: async (items, target) => {
+      if (isJobReceipt(items)) {
+        jobs.track(items)
+        if (target.replace)
+          setReplacementVersions((current) => {
+            const next = { ...current }
+            items.question_part_ids.forEach((id) => {
+              next[id] = (next[id] ?? 0) + 1
+            })
+            return next
+          })
+        setGenerationMessage('Rubric generation queued. You can navigate while it runs.')
+        setErrorMessage(null)
+        return
+      }
       if (target.replace)
         setReplacementVersions((current) => {
           const next = { ...current }
@@ -361,6 +383,7 @@ export function AssignmentRubricPage() {
     onError: (error) => {
       setGenerationMessage(null)
       setErrorMessage(getApiErrorMessage(error))
+      jobs.refresh()
     },
   })
 
@@ -448,6 +471,7 @@ export function AssignmentRubricPage() {
               fails, you can still add criteria manually.
             </p>
             <AIButton
+              job={!bulkJob?.replace_existing ? bulkJob : undefined}
               busy={
                 generateMutation.isPending &&
                 generateMutation.variables?.questionId === undefined &&
@@ -458,7 +482,8 @@ export function AssignmentRubricPage() {
                 generateMutation.isPending ||
                 createMutation.isPending ||
                 updateMutation.isPending ||
-                deleteMutation.isPending
+                deleteMutation.isPending ||
+                jobs.hasOperation('rubric', assignmentId)
               }
               onClick={() => {
                 void generate(undefined, false)
@@ -472,6 +497,7 @@ export function AssignmentRubricPage() {
                 : 'Generate missing rubric criteria'}
             </AIButton>
             <AIButton
+              job={bulkJob?.replace_existing ? bulkJob : undefined}
               busy={
                 generateMutation.isPending &&
                 generateMutation.variables?.questionId === undefined &&
@@ -482,7 +508,8 @@ export function AssignmentRubricPage() {
                 generateMutation.isPending ||
                 createMutation.isPending ||
                 updateMutation.isPending ||
-                deleteMutation.isPending
+                deleteMutation.isPending ||
+                jobs.hasOperation('rubric', assignmentId)
               }
               className="mt-3"
               onClick={() => {
@@ -520,8 +547,9 @@ export function AssignmentRubricPage() {
           <section className="space-y-4">
             {rubricGroups.map((group) => (
               <RubricQuestionSection
-                key={group.question_part_id}
+                key={`${group.question_part_id}-${replacementVersions[group.question_part_id] ?? 0}`}
                 group={group}
+                job={jobs.find('rubric', assignmentId, group.question_part_id)}
                 replacementVersion={replacementVersions[group.question_part_id] ?? 0}
                 isGenerating={
                   generateMutation.isPending &&
@@ -532,7 +560,8 @@ export function AssignmentRubricPage() {
                   generateMutation.isPending ||
                   createMutation.isPending ||
                   updateMutation.isPending ||
-                  deleteMutation.isPending
+                  deleteMutation.isPending ||
+                  Boolean(jobs.find('rubric', assignmentId, group.question_part_id))
                 }
                 onGenerate={() => generate(group.question_part_id, true)}
                 onCreate={async (payload) => {

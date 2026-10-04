@@ -11,6 +11,9 @@ import {
   updateReferenceAnswer,
   type ReferenceAnswerItem,
 } from '../api/grading'
+import { isJobReceipt } from '../api/jobs'
+import { useAIJobs } from '../hooks/useAIJobs'
+import type { AIJob } from '../api/jobs'
 import { AIButton } from '../components/AIButton'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { ReplacementConfirmation } from '../components/ReplacementConfirmation'
@@ -24,8 +27,10 @@ function ReferenceAnswerEditor({
   onGenerate,
   onSave,
   isGenerating,
+  job,
 }: {
   item: ReferenceAnswerItem
+  job?: AIJob
   isGenerating: boolean
   isBusy: boolean
   onGenerate: () => void
@@ -91,7 +96,7 @@ function ReferenceAnswerEditor({
         >
           Save answer
         </button>
-        <AIButton busy={isGenerating} onClick={() => onGenerate()}>
+        <AIButton job={job} busy={isGenerating} onClick={() => onGenerate()}>
           {isGenerating ? 'Generating…' : 'Generate with AI'}
         </AIButton>
       </div>
@@ -103,6 +108,9 @@ export function AssignmentReferenceAnswersPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const jobs = useAIJobs()
+  const bulkJob = jobs.find('reference_answers', assignmentId)
+  const [replacementVersions, setReplacementVersions] = useState<Record<number, number>>({})
   const confirmation = useConfirmation()
   const [generationMessage, setGenerationMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -150,7 +158,21 @@ export function AssignmentReferenceAnswersPage() {
         question_part_id: target.questionId,
         replace_existing: target.replace,
       }),
-    onSuccess: async (items) => {
+    onSuccess: async (items, target) => {
+      if (isJobReceipt(items)) {
+        jobs.track(items)
+        if (target.replace)
+          setReplacementVersions((current) => {
+            const next = { ...current }
+            items.question_part_ids.forEach((id) => {
+              next[id] = (next[id] ?? 0) + 1
+            })
+            return next
+          })
+        setGenerationMessage('Reference answers queued. You can navigate while generation runs.')
+        setErrorMessage(null)
+        return
+      }
       setGenerationMessage(
         items.length
           ? `Generated ${items.length} answers.`
@@ -166,6 +188,7 @@ export function AssignmentReferenceAnswersPage() {
     onError: (error) => {
       setGenerationMessage(null)
       setErrorMessage(getApiErrorMessage(error))
+      jobs.refresh()
     },
   })
 
@@ -252,12 +275,18 @@ export function AssignmentReferenceAnswersPage() {
               continue the workflow.
             </p>
             <AIButton
+              job={!bulkJob?.replace_existing ? bulkJob : undefined}
               busy={
                 generateMutation.isPending &&
                 generateMutation.variables?.questionId === undefined &&
                 !generateMutation.variables?.replace
               }
-              disabled={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+              disabled={
+                drafts.isSaving ||
+                saveMutation.isPending ||
+                generateMutation.isPending ||
+                jobs.hasOperation('reference_answers', assignmentId)
+              }
               onClick={() => {
                 void generate(undefined, false)
               }}
@@ -270,12 +299,18 @@ export function AssignmentReferenceAnswersPage() {
                 : 'Generate missing answers'}
             </AIButton>
             <AIButton
+              job={bulkJob?.replace_existing ? bulkJob : undefined}
               busy={
                 generateMutation.isPending &&
                 generateMutation.variables?.questionId === undefined &&
                 generateMutation.variables?.replace
               }
-              disabled={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+              disabled={
+                drafts.isSaving ||
+                saveMutation.isPending ||
+                generateMutation.isPending ||
+                jobs.hasOperation('reference_answers', assignmentId)
+              }
               className="mt-3"
               onClick={() => {
                 void generate(undefined, true)
@@ -312,9 +347,15 @@ export function AssignmentReferenceAnswersPage() {
           <section className="space-y-4">
             {answers.map((item) => (
               <ReferenceAnswerEditor
-                key={item.question_part_id}
+                key={`${item.question_part_id}-${replacementVersions[item.question_part_id] ?? 0}`}
                 item={item}
-                isBusy={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+                job={jobs.find('reference_answers', assignmentId, item.question_part_id)}
+                isBusy={
+                  drafts.isSaving ||
+                  saveMutation.isPending ||
+                  generateMutation.isPending ||
+                  Boolean(jobs.find('reference_answers', assignmentId, item.question_part_id))
+                }
                 isGenerating={
                   generateMutation.isPending &&
                   generateMutation.variables?.questionId === item.question_part_id

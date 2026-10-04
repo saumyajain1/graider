@@ -3,8 +3,14 @@ import type { useConfirmation } from '../hooks/useConfirmation'
 
 export function ReplacementConfirmation({
   confirmation,
+  titleText = 'Replace content with AI?',
+  confirmLabel = 'Replace with AI',
+  cancelLabel = 'Keep my content',
 }: {
   confirmation: ReturnType<typeof useConfirmation>
+  titleText?: string
+  confirmLabel?: string
+  cancelLabel?: string
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const title = useId()
@@ -23,7 +29,7 @@ export function ReplacementConfirmation({
       className="m-auto w-full max-w-lg rounded-3xl p-6 shadow-xl backdrop:bg-slate-950/60"
     >
       <h2 id={title} className="text-xl font-bold">
-        Replace content with AI?
+        {titleText}
       </h2>
       <p className="mt-3 text-sm text-slate-600">{confirmation.message}</p>
       <div className="mt-5 flex gap-3">
@@ -32,10 +38,10 @@ export function ReplacementConfirmation({
           className="workflow-button"
           onClick={() => confirmation.answer(false)}
         >
-          Keep my content
+          {cancelLabel}
         </button>
         <button type="button" className="workflow-button" onClick={() => confirmation.answer(true)}>
-          Replace with AI
+          {confirmLabel}
         </button>
       </div>
     </dialog>

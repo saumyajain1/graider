@@ -17,7 +17,7 @@ from apps.grading.services.schemas import (
 from apps.grading.services.submission_workflow import calculate_submission_total
 
 from .models import AIJob
-from .snapshots import capture_inputs, fingerprint
+from .snapshots import capture_inputs, fingerprint, inputs_unchanged
 
 
 def inputs_match(job):
@@ -43,7 +43,9 @@ def inputs_match(job):
             submission,
             job.input_snapshot["configuration"],
         )
-        return fingerprint(snapshot) == job.input_fingerprint
+        return fingerprint(job.input_snapshot) == job.input_fingerprint and inputs_unchanged(
+            job.input_snapshot, snapshot
+        )
     except ValidationError:
         return False
 

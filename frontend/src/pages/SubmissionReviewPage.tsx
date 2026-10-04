@@ -4,6 +4,8 @@ import { useParams } from 'react-router-dom'
 
 import { getAssignment } from '../api/assignments'
 import { ApiError } from '../api/client'
+import { useAIJobs } from '../hooks/useAIJobs'
+import { AIJobNotice } from '../components/AIJobNotice'
 import { getApiErrorMessage } from '../api/errors'
 import {
   finalizeSubmission,
@@ -318,6 +320,8 @@ export function SubmissionReviewPage() {
   const { assignmentId, submissionId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const jobs = useAIJobs()
+  const job = jobs.latestForSubmission(Number(submissionId))
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
@@ -415,6 +419,7 @@ export function SubmissionReviewPage() {
 
   return (
     <div className="space-y-8">
+      <AIJobNotice job={job} />
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[2rem] border border-slate-200 p-6">
           <p className="text-sm font-semibold tracking-[0.18em] text-slate-400 uppercase">
@@ -459,6 +464,7 @@ export function SubmissionReviewPage() {
               drafts.isSaving ||
               !grading.questions.length ||
               submission.grading_status === 'grading' ||
+              Boolean(jobs.forSubmission(submission.id)) ||
               (submission.grading_status === 'finalized' && !drafts.hasChanges)
             }
             onClick={() => finalizeMutation.mutate()}

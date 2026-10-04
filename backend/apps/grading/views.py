@@ -10,6 +10,9 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai_jobs.admission import background_response
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.serializers import GradingJobRequestSerializer, JobDetailSerializer
 from apps.assignments.models import Assignment
 from apps.assignments.services import extract_text_from_uploaded_file, is_supported_text_upload
 from apps.uploads import (
@@ -206,8 +209,9 @@ class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
 @extend_schema_view(
     post=api_schema(
         request=ArtifactGenerationSerializer,
-        response=ReferenceAnswerItemSerializer(many=True),
+        response={200: ReferenceAnswerItemSerializer(many=True), 202: JobDetailSerializer},
         ai=True,
+        errors={409: APIErrorSerializer},
     ),
 )
 class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
@@ -236,6 +240,12 @@ class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
                 {"detail": "No target question parts were found for reference answer generation."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        receipt = background_response(
+            request, AIJob.Operation.REFERENCES, assignment, options=serializer.validated_data
+        )
+        if receipt is not None:
+            return receipt
 
         prepared = []
         try:
@@ -331,7 +341,10 @@ class RubricListCreateView(TeacherScopedArtifactView):
 
 @extend_schema_view(
     post=api_schema(
-        request=ArtifactGenerationSerializer, response=RubricQuestionSerializer(many=True), ai=True
+        request=ArtifactGenerationSerializer,
+        response={200: RubricQuestionSerializer(many=True), 202: JobDetailSerializer},
+        ai=True,
+        errors={409: APIErrorSerializer},
     ),
 )
 class RubricGenerateView(TeacherScopedArtifactView):
@@ -382,6 +395,12 @@ class RubricGenerateView(TeacherScopedArtifactView):
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        receipt = background_response(
+            request, AIJob.Operation.RUBRIC, assignment, options=serializer.validated_data
+        )
+        if receipt is not None:
+            return receipt
 
         prepared = []
         try:
@@ -588,12 +607,26 @@ class SubmissionResponseFileView(TeacherScopedArtifactView):
 
 @extend_schema_view(
     post=api_schema(
-        response=StudentSubmissionSerializer, ai=True, errors={409: APIErrorSerializer}
+        request=GradingJobRequestSerializer,
+        response={200: StudentSubmissionSerializer, 202: JobDetailSerializer},
+        ai=True,
+        errors={409: APIErrorSerializer},
     ),
 )
 class SubmissionGradeView(TeacherScopedArtifactView):
     def post(self, request, submission_id):
         submission = self.get_submission(submission_id)
+        serializer = GradingJobRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        receipt = background_response(
+            request,
+            AIJob.Operation.GRADE,
+            submission.assignment,
+            options=serializer.validated_data,
+            submission=submission,
+        )
+        if receipt is not None:
+            return receipt
         try:
             submission = run_grading_pipeline(submission)
         except SubmissionNotReadyError as exc:
@@ -609,11 +642,23 @@ class SubmissionGradeView(TeacherScopedArtifactView):
 
 
 @extend_schema_view(
-    post=api_schema(response=GradeAllResultSerializer, ai=True, errors={409: APIErrorSerializer}),
+    post=api_schema(
+        request=GradingJobRequestSerializer,
+        response={200: GradeAllResultSerializer, 202: JobDetailSerializer},
+        ai=True,
+        errors={409: APIErrorSerializer},
+    ),
 )
 class AssignmentGradeAllView(TeacherScopedArtifactView):
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
+        serializer = GradingJobRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        receipt = background_response(
+            request, AIJob.Operation.BATCH, assignment, options=serializer.validated_data
+        )
+        if receipt is not None:
+            return receipt
         submissions = list(assignment.submissions.all())
         if not submissions:
             return Response(
