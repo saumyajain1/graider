@@ -1,7 +1,13 @@
+import logging
 import re
 import unicodedata
 
+from django.conf import settings
 from pypdf import PdfReader
+
+from apps.uploads import UploadTooLarge, check_file_size, check_text_length
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_TEXT_UPLOAD_EXTENSIONS = (".txt", ".pdf")
 
@@ -72,34 +78,54 @@ def normalize_extracted_assignment_text(raw_text: str):
     return "\n".join(normalized_lines).strip()
 
 
-def extract_text_from_uploaded_file(uploaded_file):
+def extract_text_from_uploaded_file(uploaded_file, *, max_chars=None):
+    max_chars = max_chars or settings.GRAIDER_MAX_ASSIGNMENT_CHARS
+    check_file_size(uploaded_file, settings.GRAIDER_MAX_UPLOAD_BYTES)
     file_name = uploaded_file.name.lower()
 
     if file_name.endswith(".txt"):
         uploaded_file.seek(0)
         extracted_text = uploaded_file.read().decode("utf-8", errors="ignore").strip()
         uploaded_file.seek(0)
-        return normalize_extracted_assignment_text(extracted_text), ""
+        check_text_length(extracted_text, max_chars)
+        normalized = normalize_extracted_assignment_text(extracted_text)
+        check_text_length(normalized, max_chars)
+        return normalized, ""
 
     if file_name.endswith(".pdf"):
         try:
             uploaded_file.seek(0)
             reader = PdfReader(uploaded_file)
-            extracted_text = "\n\n".join(
-                (page.extract_text() or "").strip()
-                for page in reader.pages
-                if (page.extract_text() or "").strip()
-            ).strip()
+            if len(reader.pages) > settings.GRAIDER_MAX_PDF_PAGES:
+                raise UploadTooLarge(
+                    f"PDF exceeds the {settings.GRAIDER_MAX_PDF_PAGES}-page limit."
+                )
+            chunks = []
+            character_count = 0
+            for page in reader.pages:
+                chunk = (page.extract_text() or "").strip()
+                character_count += len(chunk)
+                if character_count > max_chars:
+                    raise UploadTooLarge(f"PDF text exceeds the {max_chars:,}-character limit.")
+                if chunk:
+                    chunks.append(chunk)
+            extracted_text = "\n\n".join(chunks)
             uploaded_file.seek(0)
             if extracted_text:
+                normalized = normalize_extracted_assignment_text(extracted_text)
+                check_text_length(normalized, max_chars)
                 return (
-                    normalize_extracted_assignment_text(extracted_text),
+                    normalized,
                     "PDF text was normalized conservatively. Complex math may still need a manual pass.",
                 )
             return "", "PDF upload succeeded, but no extractable text was found."
-        except Exception as exc:  # pragma: no cover - defensive fallback
+        except UploadTooLarge:
             uploaded_file.seek(0)
-            return "", f"PDF extraction failed: {exc}"
+            raise
+        except Exception:
+            logger.exception("PDF text extraction failed")
+            uploaded_file.seek(0)
+            return "", "PDF text could not be read. Try a text-based PDF or paste the text instead."
 
     return "", "Only .txt and .pdf files are supported for assignment uploads."
 

@@ -15,7 +15,10 @@ from .views import (
     SubmissionGradeView,
     SubmissionGradingView,
     SubmissionImportCsvView,
+    SubmissionImportFileView,
+    SubmissionImportListView,
     SubmissionListCreateView,
+    SubmissionResponseFileView,
 )
 
 urlpatterns = [
@@ -60,9 +63,24 @@ urlpatterns = [
         name="submission-import-csv",
     ),
     path(
+        "assignments/<int:assignment_id>/imports",
+        SubmissionImportListView.as_view(),
+        name="submission-import-list",
+    ),
+    path(
+        "assignments/<int:assignment_id>/imports/<int:import_id>/file",
+        SubmissionImportFileView.as_view(),
+        name="submission-import-file",
+    ),
+    path(
         "submissions/<int:submission_id>",
         SubmissionDetailView.as_view(),
         name="submission-detail",
+    ),
+    path(
+        "submissions/<int:submission_id>/response-file",
+        SubmissionResponseFileView.as_view(),
+        name="submission-response-file",
     ),
     path(
         "submissions/<int:submission_id>/grade",

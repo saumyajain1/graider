@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { deleteAssignment, listAssignments } from '../api/assignments'
+import { getApiErrorMessage } from '../api/errors'
+import { QueryError } from '../components/QueryError'
+import { formatStatus } from '../lib/format'
 
 function formatTimestamp(value: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -43,11 +46,10 @@ export function DashboardPage() {
             Dashboard
           </p>
           <h1 className="mt-3 font-['Space_Grotesk'] text-4xl font-bold leading-tight">
-            Open an assignment, continue grading, or start a new one.
+            Your assignments
           </h1>
           <p className="mt-4 max-w-2xl text-sm text-fuchsia-100/72 md:text-base">
-            Use this space to move between assignment setup, submissions, review, and
-            export without jumping between separate tools.
+            Create an assignment or pick up where you left off.
           </p>
           <div className="mt-8">
             <Link
@@ -76,7 +78,7 @@ export function DashboardPage() {
               >
                 <span className="text-sm font-medium text-slate-600">{label}</span>
                 <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white tabular-nums">
-                  {value}
+                  {assignmentsQuery.isPending || assignmentsQuery.isError ? '—' : value}
                 </span>
               </div>
             ))}
@@ -89,7 +91,7 @@ export function DashboardPage() {
           <div>
             <h2 className="section-title">Assignments</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Recent grading projects owned by your teacher account.
+              Manage questions, submissions, and results for each assignment.
             </p>
           </div>
           {assignments.length > 0 ? (
@@ -99,9 +101,31 @@ export function DashboardPage() {
           ) : null}
         </div>
 
+        {deleteMutation.isError ? (
+          <div
+            role="alert"
+            className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+          >
+            {getApiErrorMessage(
+              deleteMutation.error,
+              'Could not delete the assignment. Please try again.',
+            )}
+          </div>
+        ) : null}
+
         {assignmentsQuery.isPending ? (
-          <div className="mt-5 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
+          <div
+            role="status"
+            className="mt-5 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600"
+          >
             Loading assignments...
+          </div>
+        ) : assignmentsQuery.isError ? (
+          <div className="mt-5">
+            <QueryError
+              error={assignmentsQuery.error}
+              onRetry={() => void assignmentsQuery.refetch()}
+            />
           </div>
         ) : assignments.length > 0 ? (
           <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -120,7 +144,7 @@ export function DashboardPage() {
                     </h3>
                   </div>
                   <span className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700">
-                    {assignment.status.replace('_', ' ')}
+                    {formatStatus(assignment.status)}
                   </span>
                 </div>
 
@@ -140,33 +164,30 @@ export function DashboardPage() {
                   </span>
                 </div>
 
-                <div className="mt-6 flex gap-3">
+                <div className="mt-6 flex flex-wrap gap-3">
                   <Link
                     to={`/assignments/${assignment.id}/overview`}
                     className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
                   >
-                    Open overview
-                  </Link>
-                  <Link
-                    to={`/assignments/${assignment.id}/questions`}
-                    className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-                  >
-                    Edit questions
+                    Open assignment overview
                   </Link>
                   <button
                     type="button"
+                    disabled={deleteMutation.isPending}
                     onClick={() => {
                       if (
                         window.confirm(
-                          `Delete "${assignment.title}" and all of its generated artifacts?`,
+                          `Delete "${assignment.title}" and its questions, answers, rubric, submissions, and results?`,
                         )
                       ) {
-                        void deleteMutation.mutateAsync(String(assignment.id))
+                        deleteMutation.mutate(String(assignment.id))
                       }
                     }}
-                    className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                    className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
                   >
-                    Delete
+                    {deleteMutation.isPending && deleteMutation.variables === String(assignment.id)
+                      ? 'Deleting...'
+                      : 'Delete'}
                   </button>
                 </div>
               </article>
@@ -178,15 +199,8 @@ export function DashboardPage() {
               No assignments yet
             </h3>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
-              Start with one assignment. You can paste the prompt, upload a .txt or PDF,
-              then manually clean up the extracted text before moving to question setup.
+              Create an assignment to get started.
             </p>
-            <Link
-              to="/assignments/new"
-              className="mt-6 inline-flex rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-700"
-            >
-              Create your first assignment
-            </Link>
           </div>
         )}
       </section>

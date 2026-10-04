@@ -1,4 +1,5 @@
-import { apiRequest } from './client'
+import { ApiError, apiRequest } from './client'
+import { isSubmissionGrading } from './reviewData'
 
 export type ReferenceAnswerItem = {
   id: number | null
@@ -52,6 +53,14 @@ export type StudentSubmission = {
   updated_at: string
 }
 
+export type SubmissionImport = {
+  id: number
+  original_filename: string
+  source_file_url: string
+  row_count: number
+  created_at: string
+}
+
 export type SubmissionAnswerPart = {
   id: number
   question_part_id: number
@@ -65,6 +74,22 @@ export type SubmissionAnswerPart = {
   updated_at: string
 }
 
+export type CriterionResult = {
+  criterion_id: number
+  title: string
+  description: string
+  max_points: string
+  ai_score: string | null
+  final_score: string | null
+  ai_feedback: string
+  final_feedback: string
+}
+
+export type CriterionReview = Pick<
+  CriterionResult,
+  'criterion_id' | 'final_score' | 'final_feedback'
+>
+
 export type GradingResult = {
   id: number
   question_part_id: number
@@ -77,6 +102,7 @@ export type GradingResult = {
   max_score: string
   ai_feedback: string
   final_feedback: string
+  criterion_results: CriterionResult[]
   reasoning_summary: string
   confidence_score: string | null
   needs_review: boolean
@@ -88,6 +114,8 @@ export type SubmissionGrading = {
   submission: StudentSubmission
   answer_parts: SubmissionAnswerPart[]
   grading_results: GradingResult[]
+  questions: RubricQuestion[]
+  reference_answers: ReferenceAnswerItem[]
 }
 
 export type GradeAllResponse = {
@@ -122,7 +150,7 @@ export function updateReferenceAnswer(
 
 export function generateReferenceAnswers(
   assignmentId: string,
-  payload?: { question_part_id?: number },
+  payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
   return apiRequest<ReferenceAnswerItem[]>(
     `/api/assignments/${assignmentId}/reference-answers/generate`,
@@ -170,7 +198,7 @@ export function deleteRubricCriterion(criterionId: number) {
 
 export function generateRubric(
   assignmentId: string,
-  payload?: { question_part_id?: number },
+  payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
   return apiRequest<RubricQuestion[]>(`/api/assignments/${assignmentId}/rubric/generate`, {
     method: 'POST',
@@ -180,6 +208,10 @@ export function generateRubric(
 
 export function listSubmissions(assignmentId: string) {
   return apiRequest<StudentSubmission[]>(`/api/assignments/${assignmentId}/submissions`)
+}
+
+export function listSubmissionImports(assignmentId: string) {
+  return apiRequest<SubmissionImport[]>(`/api/assignments/${assignmentId}/imports`)
 }
 
 export function createSubmission(
@@ -236,8 +268,27 @@ export function gradeAllSubmissions(assignmentId: string) {
   })
 }
 
-export function getSubmissionGrading(submissionId: number) {
-  return apiRequest<SubmissionGrading>(`/api/submissions/${submissionId}/grading`)
+export async function getSubmissionGrading(submissionId: number) {
+  const data = await apiRequest<unknown>(`/api/submissions/${submissionId}/grading`)
+  if (!isSubmissionGrading(data)) {
+    throw new ApiError('Could not load the review data. Refresh the page and try again.', 200, null)
+  }
+  return data
+}
+
+export function saveQuestionReview(
+  submissionId: number,
+  payload: {
+    question_part_id: number
+    criterion_results: CriterionReview[]
+    final_feedback: string
+    needs_review: boolean
+  },
+) {
+  return apiRequest<GradingResult>(`/api/submissions/${submissionId}/grading`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function updateGradingResult(

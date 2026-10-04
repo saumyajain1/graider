@@ -1,20 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import {
   deleteAssignment,
   generateQuestions,
   getAssignment,
   updateAssignment,
+  previewAssignmentSource,
   type AssignmentPayload,
 } from '../api/assignments'
+import { ApiError } from '../api/client'
 import { getApiErrorMessage } from '../api/errors'
+import { AIButton } from '../components/AIButton'
+import { QueryError } from '../components/QueryError'
+import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
+import { WorkflowDraftProvider, useDraft, useDraftSaves } from '../hooks/useDraftSaves'
+import { formatStatus } from '../lib/format'
 
 export function AssignmentOverviewPage() {
   const { assignmentId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const drafts = useDraftSaves()
   const [form, setForm] = useState<AssignmentPayload>({
     title: '',
     course_name: '',
@@ -29,23 +37,59 @@ export function AssignmentOverviewPage() {
     enabled: Boolean(assignmentId),
   })
 
-  useEffect(() => {
-    if (!assignmentQuery.data) {
-      return
-    }
+  const [sourceMode, setSourceMode] = useState<'file' | 'text'>('file')
+  const [fileInputVersion, setFileInputVersion] = useState(0)
+  const [previewFile, setPreviewFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const previewMutation = useMutation({
+    mutationFn: (file: File) => previewAssignmentSource(assignmentId!, file),
+    onSuccess: (_, file) => {
+      setPreviewFile(file)
+      setFileError(null)
+    },
+    onError: (error) => setFileError(getApiErrorMessage(error)),
+  })
+  const validateSource = () => {
+    if (!form.title.trim()) throw new Error('Enter an assignment title before continuing.')
+    if (
+      form.source_file &&
+      sourceMode === 'file' &&
+      (previewFile !== form.source_file || !previewMutation.data)
+    )
+      throw new ApiError('Preview the replacement file text before saving.', 400, null)
+  }
+  const sourcePayload = (payload: AssignmentPayload): AssignmentPayload => {
+    validateSource()
+    return { ...payload, source_text_mode: payload.source_file ? sourceMode : undefined }
+  }
 
+  const savedTitle = assignmentQuery.data?.title
+  const savedCourse = assignmentQuery.data?.course_name
+  const savedDescription = assignmentQuery.data?.description
+  const savedText = assignmentQuery.data?.raw_assignment_text
+  useEffect(() => {
+    if (savedTitle === undefined) return
     setForm({
-      title: assignmentQuery.data.title,
-      course_name: assignmentQuery.data.course_name,
-      description: assignmentQuery.data.description,
-      raw_assignment_text: assignmentQuery.data.raw_assignment_text,
+      title: savedTitle,
+      course_name: savedCourse ?? '',
+      description: savedDescription ?? '',
+      raw_assignment_text: savedText ?? '',
       source_file: null,
     })
-  }, [assignmentQuery.data])
+  }, [savedTitle, savedCourse, savedDescription, savedText])
 
   const updateMutation = useMutation({
-    mutationFn: (payload: AssignmentPayload) => updateAssignment(assignmentId!, payload),
+    mutationFn: (payload: AssignmentPayload) =>
+      updateAssignment(assignmentId!, sourcePayload(payload)),
     onSuccess: async (assignment) => {
+      setFileInputVersion((version) => version + 1)
+      setForm({
+        title: assignment.title,
+        course_name: assignment.course_name,
+        description: assignment.description,
+        raw_assignment_text: assignment.raw_assignment_text,
+        source_file: null,
+      })
       queryClient.setQueryData(['assignments', assignmentId], assignment)
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
@@ -53,10 +97,12 @@ export function AssignmentOverviewPage() {
 
   const regenerateMutation = useMutation({
     mutationFn: async (payload: AssignmentPayload) => {
-      await updateAssignment(assignmentId!, payload)
+      await updateAssignment(assignmentId!, sourcePayload(payload))
       return generateQuestions(assignmentId!, true)
     },
     onSuccess: async () => {
+      setFileInputVersion((version) => version + 1)
+      setForm((current) => ({ ...current, source_file: null }))
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
@@ -71,8 +117,36 @@ export function AssignmentOverviewPage() {
     },
   })
 
+  useDraft(
+    'assignment',
+    {
+      dirty:
+        Boolean(assignmentQuery.data) &&
+        (form.title !== assignmentQuery.data?.title ||
+          form.course_name !== assignmentQuery.data?.course_name ||
+          form.description !== assignmentQuery.data?.description ||
+          form.raw_assignment_text !== assignmentQuery.data?.raw_assignment_text ||
+          Boolean(form.source_file)),
+      validate: () => {
+        validateSource()
+      },
+      save: () => updateMutation.mutateAsync(form),
+    },
+    drafts,
+  )
   if (assignmentQuery.isPending) {
     return <div className="text-sm text-slate-600">Loading assignment...</div>
+  }
+
+  if (assignmentQuery.isError) {
+    return (
+      <QueryError
+        error={assignmentQuery.error}
+        onRetry={() => {
+          void assignmentQuery.refetch()
+        }}
+      />
+    )
   }
 
   if (!assignmentQuery.data) {
@@ -82,211 +156,308 @@ export function AssignmentOverviewPage() {
   const assignment = assignmentQuery.data
 
   return (
-    <div className="space-y-8">
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-[2rem] border border-slate-200 p-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700">
-              {assignment.status.replace('_', ' ')}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {assignment.question_count} questions
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {assignment.submission_count} submissions
-            </span>
+    <WorkflowDraftProvider value={drafts}>
+      <div className="space-y-8">
+        <section className="space-y-6">
+          <div className="rounded-[2rem] border border-slate-200 p-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700">
+                {formatStatus(assignment.status)}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {assignment.question_count} questions
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {assignment.submission_count} submissions
+              </span>
+            </div>
+
+            <h1 className="mt-4 section-title">{assignment.title}</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Keep the raw assignment text clean here before you decompose it into question parts.
+              If file extraction was messy, correct it directly in the editor below.
+            </p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              If you replace the uploaded file, save here and then regenerate questions to overwrite
+              the existing structure from the current file/text.
+            </p>
+
+            {assignment.ingestion_notes ? (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {assignment.ingestion_notes}
+              </div>
+            ) : null}
+
+            {assignment.source_filename ? (
+              <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Uploaded file:{' '}
+                <a
+                  href={assignment.source_file_url ?? undefined}
+                  className="font-medium text-fuchsia-700 underline"
+                >
+                  {assignment.source_filename}
+                </a>
+              </div>
+            ) : null}
           </div>
+        </section>
 
-          <h1 className="mt-4 section-title">{assignment.title}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            Keep the raw assignment text clean here before you decompose it into
-            question parts. If file extraction was messy, correct it directly in the
-            editor below.
-          </p>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            If you replace the uploaded file, save here and then regenerate questions to
-            overwrite the existing structure from the current file/text.
-          </p>
-
-          {assignment.ingestion_notes ? (
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              {assignment.ingestion_notes}
-            </div>
-          ) : null}
-
-          {assignment.source_filename ? (
-            <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Uploaded file: {assignment.source_filename}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-[2rem] bg-slate-950 px-6 py-7 text-white">
-          <p className="text-sm font-semibold tracking-[0.18em] text-fuchsia-200/65 uppercase">
-            Next step
-          </p>
-          <h2 className="mt-3 font-['Space_Grotesk'] text-3xl font-bold">
-            Build the question map manually first.
-          </h2>
-          <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Phase 2 keeps the workflow explicit: create question parts by hand, reorder
-            them, and set marks before adding AI-generated artifacts in the next phase.
-          </p>
-          <Link
-            to={`/assignments/${assignment.id}/questions`}
-            className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100"
-          >
-            Open question editor
-          </Link>
-        </div>
-      </section>
-
-      <form
-        className="rounded-[2rem] border border-slate-200 p-6"
-        onSubmit={async (event) => {
-          event.preventDefault()
-          await updateMutation.mutateAsync(form)
-        }}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Title</span>
-            <input
-              required
-              value={form.title}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, title: event.target.value }))
-              }
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Course name
-            </span>
-            <input
-              value={form.course_name}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, course_name: event.target.value }))
-              }
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
-            />
-          </label>
-        </div>
-
-        <label className="mt-4 block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">Description</span>
-          <textarea
-            rows={4}
-            value={form.description}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, description: event.target.value }))
+        <form
+          className="rounded-[2rem] border border-slate-200 p-6"
+          onSubmit={(event) => {
+            event.preventDefault()
+            updateMutation.mutate(form)
+          }}
+        >
+          <fieldset
+            disabled={
+              previewMutation.isPending ||
+              drafts.isSaving ||
+              updateMutation.isPending ||
+              regenerateMutation.isPending ||
+              deleteMutation.isPending
             }
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
-          />
-        </label>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-[0.8fr_1.2fr]">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Replace source file
-            </span>
-            <input
-              type="file"
-              accept=".txt,.pdf"
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  source_file: event.target.files?.[0] ?? null,
-                }))
-              }
-              className="block w-full rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Assignment text
-            </span>
-            <textarea
-              rows={14}
-              value={form.raw_assignment_text}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  raw_assignment_text: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
-            />
-          </label>
-        </div>
-
-        {updateMutation.isError ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {getApiErrorMessage(
-              updateMutation.error,
-              'Something went wrong while updating the assignment.',
-            )}
-          </div>
-        ) : null}
-
-        {regenerateMutation.isError ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {getApiErrorMessage(
-              regenerateMutation.error,
-              'Something went wrong while updating the assignment.',
-            )}
-          </div>
-        ) : null}
-
-        {updateMutation.isSuccess ? (
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Assignment saved.
-          </div>
-        ) : null}
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            type="submit"
-            disabled={updateMutation.isPending}
-            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-70"
+            className="contents"
           >
-            {updateMutation.isPending ? 'Saving...' : 'Save assignment'}
-          </button>
-          <button
-            type="button"
-            disabled={regenerateMutation.isPending}
-            onClick={() => void regenerateMutation.mutateAsync(form)}
-            className="rounded-full border border-fuchsia-300 px-5 py-3 text-sm font-semibold text-fuchsia-700 transition hover:bg-fuchsia-50 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {regenerateMutation.isPending
-              ? 'Saving and regenerating...'
-              : 'Overwrite questions from current file/text'}
-          </button>
-          <Link
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Title</span>
+                <input
+                  required
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, title: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Course name</span>
+                <input
+                  value={form.course_name}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, course_name: event.target.value }))
+                  }
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+                />
+              </label>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Description</span>
+              <textarea
+                rows={4}
+                value={form.description}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, description: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+              />
+            </label>
+
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">
+                  Replace source file
+                </span>
+                <input
+                  key={fileInputVersion}
+                  type="file"
+                  accept=".txt,.pdf"
+                  onChange={(event) => {
+                    setForm((current) => ({
+                      ...current,
+                      source_file: event.target.files?.[0] ?? null,
+                    }))
+                    setPreviewFile(null)
+                    setFileError(null)
+                    previewMutation.reset()
+                    setSourceMode('file')
+                  }}
+                  className="block w-full rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500"
+                />
+              </label>
+              {form.source_file && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-medium text-slate-800">
+                    Which text should this assignment use?
+                  </p>
+                  <label className="flex gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="source-mode"
+                      checked={sourceMode === 'file'}
+                      onChange={() => setSourceMode('file')}
+                    />
+                    Use text from replacement file
+                  </label>
+                  <label className="flex gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="source-mode"
+                      checked={sourceMode === 'text'}
+                      onChange={() => setSourceMode('text')}
+                    />
+                    Keep edited assignment text
+                  </label>
+                  {sourceMode === 'file' && (
+                    <>
+                      <button
+                        type="button"
+                        className="workflow-button"
+                        onClick={() => previewMutation.mutate(form.source_file!)}
+                      >
+                        Preview replacement text
+                      </button>
+                      {previewFile === form.source_file && previewMutation.data && (
+                        <div>
+                          <p className="font-medium text-sm">Extracted text preview</p>
+                          <p className="mt-2 whitespace-pre-wrap max-h-80 overflow-auto rounded-xl bg-white p-4 text-sm">
+                            {previewMutation.data.extracted_text}
+                          </p>
+                          {previewMutation.data.ingestion_notes && (
+                            <p className="mt-2 text-sm text-amber-800">
+                              {previewMutation.data.ingestion_notes}
+                            </p>
+                          )}
+                          <p className="mt-2 text-sm text-slate-600">
+                            Saving will replace the assignment text below with this preview. You can
+                            edit it after saving.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {fileError && (
+                    <p role="alert" className="text-sm text-rose-700">
+                      {fileError}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">
+                  Assignment text
+                </span>
+                <textarea
+                  rows={14}
+                  value={form.raw_assignment_text}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      raw_assignment_text: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-fuchsia-500"
+                />
+              </label>
+            </div>
+
+            {updateMutation.isError ? (
+              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {getApiErrorMessage(
+                  updateMutation.error,
+                  'Something went wrong while updating the assignment.',
+                )}
+              </div>
+            ) : null}
+
+            {regenerateMutation.isError ? (
+              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {getApiErrorMessage(
+                  regenerateMutation.error,
+                  'Something went wrong while updating the assignment.',
+                )}
+              </div>
+            ) : null}
+
+            {deleteMutation.isError ? (
+              <div
+                role="alert"
+                className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+              >
+                {getApiErrorMessage(deleteMutation.error)}
+              </div>
+            ) : null}
+            {updateMutation.isSuccess ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                Assignment saved.
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={
+                  updateMutation.isPending ||
+                  regenerateMutation.isPending ||
+                  deleteMutation.isPending
+                }
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {updateMutation.isPending ? 'Saving...' : 'Save assignment'}
+              </button>
+              <AIButton
+                busy={regenerateMutation.isPending}
+                disabled={
+                  updateMutation.isPending ||
+                  regenerateMutation.isPending ||
+                  deleteMutation.isPending
+                }
+                onClick={() => {
+                  if (
+                    assignment.question_count > 0 &&
+                    !window.confirm(
+                      'Replace all questions? Existing reference answers, rubrics, and per-question grading results will also be removed.',
+                    )
+                  )
+                    return
+                  regenerateMutation.mutate(form)
+                }}
+              >
+                {regenerateMutation.isPending
+                  ? 'Saving and regenerating...'
+                  : 'Overwrite questions from current file/text'}
+              </AIButton>
+              <button
+                type="button"
+                disabled={
+                  updateMutation.isPending ||
+                  regenerateMutation.isPending ||
+                  deleteMutation.isPending
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Delete "${assignment.title}" and all of its generated answers, rubric, submissions, and grading data?`,
+                    )
+                  ) {
+                    deleteMutation.mutate()
+                  }
+                }}
+                className="rounded-full border border-rose-200 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete assignment'}
+              </button>
+            </div>
+          </fieldset>
+        </form>
+        <div className="flex flex-wrap gap-3">
+          <WorkflowBack to="/">Back to dashboard</WorkflowBack>
+          <WorkflowContinue
             to={`/assignments/${assignment.id}/questions`}
-            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
+            disabled={
+              drafts.isSaving ||
+              updateMutation.isPending ||
+              regenerateMutation.isPending ||
+              deleteMutation.isPending
+            }
           >
-            Continue to questions
-          </Link>
-          <button
-            type="button"
-            disabled={deleteMutation.isPending}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Delete "${assignment.title}" and all of its generated answers, rubric, submissions, and grading data?`,
-                )
-              ) {
-                void deleteMutation.mutateAsync()
-              }
-            }}
-            className="rounded-full border border-rose-200 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete assignment'}
-          </button>
+            questions
+          </WorkflowContinue>
         </div>
-      </form>
-    </div>
+      </div>
+    </WorkflowDraftProvider>
   )
 }

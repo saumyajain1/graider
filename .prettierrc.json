@@ -1,0 +1,8 @@
+{
+  "singleQuote": true,
+  "semi": false,
+  "printWidth": 100,
+  "proseWrap": "preserve",
+  "plugins": ["prettier-plugin-sh", "prettier-plugin-toml"],
+  "tabWidth": 2
+}

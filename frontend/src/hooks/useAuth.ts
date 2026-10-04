@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  fetchAuthOptions,
   fetchCurrentUser,
   login,
   logout,
   register,
+  startGoogleAuth,
   type AuthPayload,
 } from '../api/auth'
 import { ApiError } from '../api/client'
@@ -18,7 +20,7 @@ export function useCurrentUser() {
   const user =
     query.isError && query.error instanceof ApiError && query.error.status === 401
       ? null
-      : query.data ?? null
+      : (query.data ?? null)
 
   return {
     ...query,
@@ -32,6 +34,7 @@ export function useLogin() {
   return useMutation({
     mutationFn: (payload: AuthPayload) => login(payload),
     onSuccess: (user) => {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], user)
     },
   })
@@ -42,6 +45,7 @@ export function useRegister() {
   return useMutation({
     mutationFn: (payload: AuthPayload) => register(payload),
     onSuccess: (user) => {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], user)
     },
   })
@@ -52,7 +56,19 @@ export function useLogout() {
   return useMutation({
     mutationFn: logout,
     onSuccess: () => {
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
       queryClient.setQueryData(['auth', 'me'], null)
     },
+  })
+}
+
+export function useAuthOptions() {
+  return useQuery({ queryKey: ['auth', 'options'], queryFn: fetchAuthOptions })
+}
+
+export function useGoogleAuth() {
+  return useMutation({
+    mutationFn: startGoogleAuth,
+    onSuccess: ({ redirect_url }) => window.location.assign(redirect_url),
   })
 }

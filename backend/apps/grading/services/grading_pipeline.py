@@ -3,12 +3,12 @@ from textwrap import dedent
 
 from apps.assignments.models import Assignment, QuestionPart
 
-from .openai_client import OpenAIChatService
 from .generation import build_shared_context, format_question_label
+from .openai_client import OpenAIChatService
 from .schemas import GeneratedQuestionGradeSchema, SubmissionAnswerMappingSchema
 
-MAPPING_MODEL = os.getenv("OPENAI_MAPPING_MODEL", "gpt-5.4-mini")
-GRADING_MODEL = os.getenv("OPENAI_GRADING_MODEL", "gpt-5.4-mini")
+MAPPING_MODEL = os.getenv("OPENAI_MAPPING_MODEL", "gpt-6-luna")
+GRADING_MODEL = os.getenv("OPENAI_GRADING_MODEL", "gpt-6-luna")
 
 
 def map_submission_answers(
@@ -30,6 +30,8 @@ def map_submission_answers(
     )
 
     return service.parse(
+        user=assignment.teacher,
+        operation="answer_mapping",
         model=MAPPING_MODEL,
         response_format=SubmissionAnswerMappingSchema,
         system_prompt=dedent(
@@ -63,12 +65,19 @@ def grade_question_part(
     shared_context = build_shared_context(question_part)
 
     return service.parse(
+        user=question_part.assignment.teacher,
+        operation="submission_grading",
         model=GRADING_MODEL,
         response_format=GeneratedQuestionGradeSchema,
         system_prompt=dedent(
             """
             You grade one student answer against a question, reference answer, and rubric.
-            Return a concise score, short feedback, a short reasoning summary, and a review flag.
+            Use both the reference answer and each rubric criterion to assess the student answer.
+            Return every supplied criterion_id exactly once with its own score and concise feedback.
+            Each score must be between zero and that criterion's maximum, with at most two decimal
+            places. Explain deductions using evidence from the student answer. Do not invent criteria.
+            Also return overall feedback, a short reasoning summary, and a review flag.
+            Question and submission totals are calculated from the criterion scores by the app.
             """
         ).strip(),
         user_prompt=dedent(
