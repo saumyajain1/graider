@@ -1,6 +1,6 @@
 # Background AI jobs
 
-Branch: `feat/background-ai-jobs`. Steps 1 and 2 are committed as `a5e89bb` and `9be647f`. Step 3 is implemented and uncommitted for review; job mode remains disabled.
+Branch: `feat/background-ai-jobs`. Steps 1–3 are committed as `a5e89bb`, `9be647f` and `69917cf`. Step 4 adds recovery/capacity verification and remains uncommitted for review; job mode remains disabled.
 
 ## Design
 
@@ -45,11 +45,17 @@ Retry known safe transient failures with bounded backoff. If a request may have 
 
 For source development, run `GRAIDER_AI_JOBS_ENABLED=true python backend/manage.py run_ai_worker` beside Django with the same enabled setting/database/socket. Use an isolated development database for testing. The flag remains disabled in the local and production env files. Full 10 × 10 capacity and cross-process fault evidence belong to step 4; retention tooling and rollout documentation belong to step 5.
 
-**Step 3 — uncommitted implementation.** All five AI routes admit jobs and return `202` receipts when enabled; disabled mode retains the existing synchronous responses. Admission checks worker readiness, ownership/CSRF, explicit regrading, atomic batch limits and idempotency. Generated OpenAPI includes both staged responses and the optional action key. Owned discovery combines recent history with all active/paused jobs and expands batch children.
+**Step 3 — committed `69917cf`.** All five AI routes admit jobs and return `202` receipts when enabled; disabled mode retains the existing synchronous responses. Admission checks worker readiness, ownership/CSRF, explicit regrading, atomic batch limits and idempotency. Generated OpenAPI includes both staged responses and the optional action key. Owned discovery combines recent history with all active/paused jobs and expands batch children.
 
 The frontend adds a workspace progress panel, scoped AI buttons, student queue statuses, cancellation and resume controls. It polls visible runnable jobs roughly every three seconds, backs off errors and stops periodic polling for paused/finished work. Accepted jobs survive navigation, refresh and sign-in. Lost admission responses retain an owner-scoped action key in session storage. Resume warns about uncertain prior charges. Completed students refresh independently; editor refreshes wait for dirty drafts to be saved/discarded. Confirmed replacement clears only its target drafts. Independent per-question artifact jobs no longer supersede one another, while changed target inputs remain protected.
 
 **Step 3 verification.** All 263 PostgreSQL backend tests, nine SQLite workflow integration tests and 18 frontend tests passed, with repository lint/format, frontend production build, generated OpenAPI validation and migration consistency checks. Disposable browser checks covered immediate admission, navigation/refresh, a complete first student while another runs, editable criterion results, scoped generation, cancellation with preserved grades, sign-out/sign-in discovery and preservation of an unrelated dirty answer. Tests used simulated providers; no production data, AI spending or deployment changed. Full workload and cross-process fault checks remain step 4.
+
+**Step 4 — uncommitted verification.** New process tests kill execution after mapping/question responses and during database publication, verify committed publication is not repeated, fence an expired live process, terminate a real PostgreSQL connection after dispatch, race independent workers against concurrency/quota limits, and check duplicate signals plus idle disconnects. A file-backed SQLite check preserves an upload and replays a saved response after process death. These tests run through the existing backend CI suite. Production worker code, env defaults and schema remain unchanged.
+
+The constrained-image workload uses the production supervisor, Gunicorn, worker, API, session/CSRF checks and quotas with a mounted test-only OpenAI SDK transport. The benchmark and mock transport live outside `backend/` and are not copied into the production image. Results and reproduction instructions belong in [AI_JOB_VERIFICATION.md](AI_JOB_VERIFICATION.md). No real provider calls or production data are used; job mode remains disabled.
+
+**Step 4 verification.** All 274 PostgreSQL backend tests passed; the strengthened idle-scan assertion passed separately. Repository lint/format and the production image build passed. At a hard 0.1 CPU/512 MiB limit, the simulated 10 × 10 batch finished in 589.91 seconds after acceptance, with its first complete student visible at 178.90 seconds. Admission took 8.69 seconds, maximum provider concurrency was three, sampled peak memory was 337.50 MiB, and the slowest sampled health request took 0.73 seconds. Cold web readiness took 143.18 seconds; whole-container restart readiness took 295.25 seconds. Restart preserved all 100 question grades, 200 criterion breakdowns and 110 successful usage records without another provider call. These are local simulated-provider measurements, not a real-model or Render timing guarantee. Step 4 remains uncommitted for owner review.
 
 ## Execution plan: five commits
 
