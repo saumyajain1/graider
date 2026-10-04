@@ -85,7 +85,7 @@ class JobFixtures:
             **kwargs,
         )[0]
 
-    def fail(self, job, state=JobState.FAILED):
+    def fail_job(self, job, state=JobState.FAILED):
         job.state = state
         job.save(update_fields=("state", "updated_at"))
         if state == JobState.FAILED:
@@ -274,7 +274,7 @@ class AdmissionTests(JobFixtures, TestCase):
 
     @override_settings(GRAIDER_AI_GLOBAL_QUEUE_LIMIT=1)
     def test_paused_work_counts_and_completed_work_releases_capacity(self):
-        job = self.fail(self.enqueue(), JobState.PAUSED_QUOTA)
+        job = self.fail_job(self.enqueue(), JobState.PAUSED_QUOTA)
         with self.assertRaises(QueueFull):
             self.enqueue("questions")
         cancel_job(owner=self.owner, job_id=job.id)
@@ -405,7 +405,7 @@ class ControlTests(JobFixtures, TestCase):
         self.assertEqual(parent.children.filter(state=JobState.CANCELLED).count(), 1)
 
     def test_retry_keeps_completed_steps_and_requires_billing_acknowledgement(self):
-        job = self.fail(self.enqueue(), JobState.NEEDS_ATTENTION)
+        job = self.fail_job(self.enqueue(), JobState.NEEDS_ATTENTION)
         completed = job.steps.first()
         completed.state = JobState.SUCCEEDED
         completed.checkpoint = {"mapped": "answer"}
@@ -433,7 +433,7 @@ class ControlTests(JobFixtures, TestCase):
         self.assertEqual(step.attempts.count(), 1)
 
     def test_changed_inputs_supersede_job_and_release_target_without_erasing_checkpoints(self):
-        job = self.fail(self.enqueue())
+        job = self.fail_job(self.enqueue())
         self.question.text = "Changed question"
         self.question.save()
         with self.assertRaises(JobConflict):
@@ -444,7 +444,7 @@ class ControlTests(JobFixtures, TestCase):
         self.assertEqual(job.steps.count(), 2)
 
     def test_deleted_submission_is_retained_as_superseded_diagnostic(self):
-        job = self.fail(self.enqueue())
+        job = self.fail_job(self.enqueue())
         self.submission.delete()
         job.refresh_from_db()
         self.assertIsNone(job.submission_id)
@@ -454,7 +454,7 @@ class ControlTests(JobFixtures, TestCase):
         self.assertEqual(job.state, JobState.SUPERSEDED)
 
     def test_retry_uses_original_configuration_and_preserves_manual_overrides(self):
-        job = self.fail(self.enqueue())
+        job = self.fail_job(self.enqueue())
         with patch.dict("os.environ", {"OPENAI_GRADING_MODEL": "different-model"}):
             retried = retry_job(owner=self.owner, job_id=job.id)
         self.assertEqual(
@@ -462,7 +462,7 @@ class ControlTests(JobFixtures, TestCase):
         )
 
     def test_retry_cannot_steal_a_target_from_a_new_job(self):
-        old = self.fail(self.enqueue())
+        old = self.fail_job(self.enqueue())
         self.enqueue()
         with self.assertRaises(JobConflict):
             retry_job(owner=self.owner, job_id=old.id)
@@ -476,8 +476,8 @@ class ControlTests(JobFixtures, TestCase):
         complete.state = JobState.SUCCEEDED
         complete.save()
         complete.targets.update(active=False)
-        self.fail(failed)
-        self.fail(parent)
+        self.fail_job(failed)
+        self.fail_job(parent)
         retry_job(owner=self.owner, job_id=parent.id)
         complete.refresh_from_db()
         failed.refresh_from_db()
@@ -497,7 +497,7 @@ class ControlTests(JobFixtures, TestCase):
 
     @override_settings(GRAIDER_AI_GLOBAL_QUEUE_LIMIT=1)
     def test_retry_rechecks_queue_capacity_without_losing_checkpoints(self):
-        failed = self.fail(self.enqueue())
+        failed = self.fail_job(self.enqueue())
         self.enqueue("questions")
         with self.assertRaises(QueueFull):
             retry_job(owner=self.owner, job_id=failed.id)
@@ -513,7 +513,7 @@ class ControlTests(JobFixtures, TestCase):
             final_score=3,
             final_feedback="Original",
         )
-        failed = self.fail(self.enqueue())
+        failed = self.fail_job(self.enqueue())
         result.final_feedback = "Teacher revised this after job admission"
         result.final_score = 5
         result.save()
@@ -526,9 +526,9 @@ class ControlTests(JobFixtures, TestCase):
     def test_one_stale_batch_child_does_not_strand_another_paused_child(self):
         second = self.make_submission("Student Two")
         parent = self.enqueue("grade_batch")
-        self.fail(parent, JobState.PAUSED_QUOTA)
+        self.fail_job(parent, JobState.PAUSED_QUOTA)
         for child in parent.children.all():
-            self.fail(child, JobState.PAUSED_QUOTA)
+            self.fail_job(child, JobState.PAUSED_QUOTA)
         second.raw_response_text = "New answer"
         second.save()
         with self.assertRaises(JobConflict):
@@ -541,8 +541,8 @@ class ControlTests(JobFixtures, TestCase):
 
     def test_retrying_a_child_reopens_parent_progress(self):
         parent = self.enqueue("grade_batch")
-        failed = self.fail(parent.children.get())
-        self.fail(parent)
+        failed = self.fail_job(parent.children.get())
+        self.fail_job(parent)
         retry_job(owner=self.owner, job_id=failed.id)
         parent.refresh_from_db()
         self.assertEqual(parent.state, JobState.QUEUED)

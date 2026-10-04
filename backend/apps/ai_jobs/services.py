@@ -142,6 +142,9 @@ def enqueue_job(
     )
     with transaction.atomic():
         lock_coordinator()
+        from .runtime import notify_worker
+
+        transaction.on_commit(notify_worker)
         if request_key:
             previous = AIJob.objects.filter(owner=owner, request_key=request_key).first()
             if previous:
@@ -237,6 +240,9 @@ def owned_job(owner, job_id):
 def cancel_job(*, owner, job_id):
     with transaction.atomic():
         lock_coordinator()
+        from .runtime import notify_worker
+
+        transaction.on_commit(notify_worker)
         job = owned_job(owner, job_id)
         if job.state == JobState.CANCELLED:
             return job
@@ -269,6 +275,9 @@ def retry_job(*, owner, job_id, confirm_possible_charge=False):
     stale = []
     with transaction.atomic():
         lock_coordinator()
+        from .runtime import notify_worker
+
+        transaction.on_commit(notify_worker)
         job = owned_job(owner, job_id)
         if job.state not in RETRYABLE_STATES or job.cancel_requested:
             raise JobConflict("Only failed, quota-paused or attention-required jobs can resume.")

@@ -358,12 +358,15 @@ def question_set_needs_repair(question_set: GeneratedQuestionSetSchema):
 def repair_generated_question_parts(
     assignment: Assignment,
     question_set: GeneratedQuestionSetSchema,
+    *,
+    service=None,
+    strict=False,
 ):
     if not question_set.parts or not question_set_needs_repair(question_set):
         return question_set
 
     try:
-        service = OpenAIChatService()
+        service = service or OpenAIChatService()
         repaired = service.parse(
             user=assignment.teacher,
             operation="question_repair",
@@ -393,6 +396,8 @@ def repair_generated_question_parts(
             ).strip(),
         )
     except Exception:
+        if strict:
+            raise
         return question_set
 
     original_signature = [
@@ -498,12 +503,14 @@ def build_shared_context(question_part: QuestionPart):
     return "\n\n".join(blocks).strip()
 
 
-def generate_question_parts(assignment: Assignment):
+def generate_question_parts(assignment: Assignment, *, service=None):
     deterministic_result = parse_structured_pdf_questions(assignment)
     if deterministic_result is not None:
-        return repair_generated_question_parts(assignment, deterministic_result)
+        return repair_generated_question_parts(
+            assignment, deterministic_result, service=service, strict=service is not None
+        )
 
-    service = OpenAIChatService()
+    service = service or OpenAIChatService()
     focus_question_number = derive_focus_question_number(assignment)
     source_name = get_assignment_source_name(assignment) or "Not provided"
     normalized_text = normalize_assignment_text(assignment.raw_assignment_text)
@@ -564,8 +571,8 @@ def generate_question_parts(assignment: Assignment):
     )
 
 
-def generate_reference_answer(assignment: Assignment, question_part: QuestionPart):
-    service = OpenAIChatService()
+def generate_reference_answer(assignment: Assignment, question_part: QuestionPart, *, service=None):
+    service = service or OpenAIChatService()
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
     return service.parse(
@@ -598,8 +605,10 @@ def generate_reference_answer(assignment: Assignment, question_part: QuestionPar
     )
 
 
-def generate_rubric_criteria(question_part: QuestionPart, reference_answer_text: str):
-    service = OpenAIChatService()
+def generate_rubric_criteria(
+    question_part: QuestionPart, reference_answer_text: str, *, service=None
+):
+    service = service or OpenAIChatService()
     shared_context = build_shared_context(question_part)
     question_label = format_question_label(question_part)
     parsed = service.parse(

@@ -3,7 +3,7 @@ import logging
 import os
 
 from django.conf import settings
-from openai import APIConnectionError, InternalServerError, OpenAI, OpenAIError
+from openai import APIConnectionError, InternalServerError, OpenAI, OpenAIError, RateLimitError
 
 from ..models import LLMUsage
 from .usage import finish_usage, reserve_usage
@@ -40,6 +40,10 @@ class LLMConfigurationError(Exception):
 
 
 class LLMGenerationError(Exception):
+    pass
+
+
+class LLMTransientError(LLMGenerationError):
     pass
 
 
@@ -120,14 +124,20 @@ class OpenAIChatService:
         response_format,
         system_prompt,
         user_prompt,
+        reasoning_effort=None,
+        accounting=None,
     ):
         if operation not in OPERATION_OUTPUT_CAPS:
             raise ValueError(f"Unknown AI operation: {operation}")
-        reasoning_effort = get_reasoning_effort(operation)
+        reasoning_effort = (
+            reasoning_effort if reasoning_effort is not None else get_reasoning_effort(operation)
+        )
         max_output_tokens = min(
             settings.GRAIDER_MAX_OUTPUT_TOKENS, OPERATION_OUTPUT_CAPS[operation]
         )
-        usage_row = reserve_usage(
+        reserve = accounting.reserve if accounting else reserve_usage
+        finish = accounting.finish if accounting else finish_usage
+        usage_row = reserve(
             user=user,
             operation=operation,
             model=model,
@@ -148,17 +158,22 @@ class OpenAIChatService:
             )
         except OpenAIError as exc:
             uncertain = isinstance(exc, (APIConnectionError, InternalServerError))
-            finish_usage(
+            finish(
                 usage_row,
                 status=LLMUsage.Status.UNCERTAIN if uncertain else LLMUsage.Status.FAILED,
                 request_id=getattr(exc, "request_id", None),
             )
             if _provider_error_code(exc) in SPEND_LIMIT_CODES:
                 raise LLMSpendLimitError("OpenAI spending or usage limit reached.") from exc
+            if isinstance(exc, RateLimitError):
+                raise LLMTransientError("Provider rate limit reached.") from exc
             raise LLMGenerationError(str(exc)) from exc
         except Exception as exc:
-            finish_usage(usage_row, status=LLMUsage.Status.UNCERTAIN)
-            logger.exception("Unexpected AI request failure")
+            finish(usage_row, status=LLMUsage.Status.UNCERTAIN)
+            if accounting:
+                logger.warning("Unexpected background AI request failure (%s).", type(exc).__name__)
+            else:
+                logger.exception("Unexpected AI request failure")
             raise LLMGenerationError("Unexpected AI request failure.") from exc
 
         provider_usage = getattr(completion, "usage", None)
@@ -176,8 +191,17 @@ class OpenAIChatService:
             refusal = None
             parsed = None
 
-        finish_usage(
+        finish(
             usage_row,
+            **(
+                {
+                    "output": parsed.model_dump(mode="json")
+                    if parsed is not None and not refusal
+                    else {}
+                }
+                if accounting
+                else {}
+            ),
             status=(
                 LLMUsage.Status.SUCCEEDED
                 if parsed is not None and not refusal

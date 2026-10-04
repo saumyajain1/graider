@@ -214,6 +214,7 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("provider_request_id", models.CharField(blank=True, max_length=100)),
+                ("output", models.JSONField(blank=True, default=dict)),
                 ("error_code", models.CharField(blank=True, max_length=40)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("finished_at", models.DateTimeField(blank=True, null=True)),
@@ -289,6 +290,10 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="aijobstep",
             constraint=models.UniqueConstraint(fields=("job", "key"), name="ai_job_step_once"),
+        ),
+        migrations.AddIndex(
+            model_name="aijobstep",
+            index=models.Index(fields=["state", "lease_expires_at"], name="ai_step_lease_idx"),
         ),
         migrations.AddConstraint(
             model_name="aijobstep",

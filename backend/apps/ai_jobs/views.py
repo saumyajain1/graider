@@ -7,13 +7,14 @@ from rest_framework.response import Response
 from config.schema import APIErrorSerializer, api_schema
 
 from .models import AIJob
+from .runtime import notify_worker
 from .serializers import (
     JobDetailSerializer,
     JobFilterSerializer,
     JobRetrySerializer,
     JobSummarySerializer,
 )
-from .services import WorkerUnavailable, cancel_job
+from .services import WorkerUnavailable, cancel_job, retry_job
 
 CONFLICT = {409: OpenApiResponse(APIErrorSerializer, description="Job state or inputs conflict.")}
 
@@ -41,6 +42,7 @@ class JobListView(ListAPIView):
         summary="List your AI jobs",
     )
     def get(self, request, *args, **kwargs):
+        notify_worker()
         return super().get(request, *args, **kwargs)
 
 
@@ -56,7 +58,9 @@ class OwnedJobView(GenericAPIView):
 class JobDetailView(OwnedJobView):
     @api_schema(response=JobDetailSerializer, tags=["AI jobs"], summary="Get your job's progress")
     def get(self, request, *args, **kwargs):
-        return Response(self.get_serializer(self.get_object()).data)
+        job = self.get_object()
+        notify_worker()
+        return Response(self.get_serializer(job).data)
 
 
 class JobCancelView(OwnedJobView):
@@ -83,10 +87,13 @@ class JobRetryView(OwnedJobView):
         },
         tags=["AI jobs"],
         summary="Resume unfinished work with explicit billing acknowledgement",
-        description="The retry contract is reserved for worker integration. This release returns 503; it does not enqueue work without an executor.",
+        description="Requires enabled job mode and a ready local worker. Completed checkpoints and previous usage reservations are retained.",
     )
     def post(self, request, job_id):
         self.get_object()  # Ownership still applies while execution is unavailable.
         serializer = JobRetrySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        raise WorkerUnavailable()
+        if not notify_worker():
+            raise WorkerUnavailable()
+        job = retry_job(owner=request.user, job_id=job_id, **serializer.validated_data)
+        return Response(self.get_serializer(job).data, status=202)

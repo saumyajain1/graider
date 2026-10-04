@@ -130,6 +130,7 @@ class AIJobStep(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        indexes = [models.Index(fields=("state", "lease_expires_at"), name="ai_step_lease_idx")]
         ordering = ("position", "id")
         constraints = [
             models.UniqueConstraint(fields=("job", "key"), name="ai_job_step_once"),
@@ -152,6 +153,7 @@ class AIJobAttempt(models.Model):
         "grading.LLMUsage", null=True, blank=True, on_delete=models.SET_NULL
     )
     state = models.CharField(max_length=20, choices=State.choices, default=State.RESERVED)
+    output = models.JSONField(default=dict, blank=True)
     provider_request_id = models.CharField(max_length=100, blank=True)
     error_code = models.CharField(max_length=40, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

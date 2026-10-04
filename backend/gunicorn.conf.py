@@ -28,3 +28,9 @@ errorlog = "-"
 capture_output = True
 max_requests = 1000
 max_requests_jitter = 50
+
+
+def post_worker_init(worker):
+    from apps.ai_jobs.runtime import notify_worker
+
+    notify_worker()
