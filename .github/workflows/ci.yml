@@ -68,12 +68,6 @@ jobs:
         run: |
           npm run test --prefix frontend
           npm run build --prefix frontend
-      - name: Backend tests and schema consistency
-        working-directory: backend
-        run: |
-          python manage.py test --noinput
-          python manage.py makemigrations --check --dry-run
-          python manage.py spectacular --validate --fail-on-warn --file /tmp/graider-openapi.yaml
       - name: Collect production assets and check settings
         env:
           DJANGO_DEBUG: 'false'
@@ -86,6 +80,12 @@ jobs:
         run: |
           python backend/manage.py collectstatic --noinput
           python backend/manage.py check --deploy --fail-level ERROR
+      - name: Backend tests and schema consistency
+        working-directory: backend
+        run: |
+          python manage.py test --noinput
+          python manage.py makemigrations --check --dry-run
+          python manage.py spectacular --validate --fail-on-warn --file /tmp/graider-openapi.yaml
       - name: Production server and delayed bulk grading
         run: python scripts/production_smoke.py
       - name: Build production image
