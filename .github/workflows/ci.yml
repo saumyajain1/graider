@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feat/production-deployment]
+    branches: [main, feat/production-deployment, feat/background-ai-jobs]
   workflow_dispatch:
 
 permissions:
