@@ -62,7 +62,7 @@ if not DEBUG and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173" if DEBUG else "")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "config.apps.GraiderAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -216,6 +216,21 @@ if _storage_configured:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.User"
 
+# Password recovery: HTTPS email works on Render's free service; local links print to the terminal.
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+DEFAULT_FROM_EMAIL = os.getenv("GRAIDER_FROM_EMAIL", "").strip() or "Graider <noreply@localhost>"
+if BREVO_API_KEY and DEFAULT_FROM_EMAIL == "Graider <noreply@localhost>":
+    raise ImproperlyConfigured("Set GRAIDER_FROM_EMAIL to your verified Brevo sender.")
+EMAIL_BACKEND = (
+    "apps.accounts.email_backend.BrevoEmailBackend"
+    if BREVO_API_KEY
+    else "django.core.mail.backends.console.EmailBackend"
+    if DEBUG
+    else "django.core.mail.backends.dummy.EmailBackend"
+)
+PASSWORD_RESET_ENABLED = DEBUG or bool(BREVO_API_KEY)
+PASSWORD_RESET_TIMEOUT = 3600
+
 # Password endpoints retain their existing validation, throttling, and sessions.
 AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
@@ -256,6 +271,8 @@ REST_FRAMEWORK = {
         "auth_login": _throttle_rate_env("GRAIDER_LOGIN_RATE", "10/min"),
         "auth_register": _throttle_rate_env("GRAIDER_REGISTER_RATE", "5/hour"),
         "auth_me": _throttle_rate_env("GRAIDER_AUTH_CHECK_RATE", "120/min"),
+        "auth_recovery": _throttle_rate_env("GRAIDER_PASSWORD_RESET_RATE", "5/hour"),
+        "auth_account": _throttle_rate_env("GRAIDER_ACCOUNT_RATE", "10/min"),
         "auth_google": _throttle_rate_env("GRAIDER_GOOGLE_RATE", "10/min"),
     },
 }

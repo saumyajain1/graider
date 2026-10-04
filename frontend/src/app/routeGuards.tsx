@@ -4,9 +4,12 @@ import { ApiError } from '../api/client'
 import { AppShell } from '../components/layout/AppShell'
 import { QueryError } from '../components/QueryError'
 import { useCurrentUser } from '../hooks/useAuth'
+import { useDraftSaves, WorkflowDraftProvider } from '../hooks/useDraftSaves'
+import { UnsavedChangesGuard } from '../components/UnsavedChangesGuard'
 import { LoginPage } from '../pages/LoginPage'
 
 export function ProtectedLayout() {
+  const drafts = useDraftSaves()
   const { error, isLoading, user, refetch } = useCurrentUser()
 
   if (isLoading) {
@@ -39,9 +42,13 @@ export function ProtectedLayout() {
   }
 
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <WorkflowDraftProvider value={drafts}>
+      <UnsavedChangesGuard>
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      </UnsavedChangesGuard>
+    </WorkflowDraftProvider>
   )
 }
 

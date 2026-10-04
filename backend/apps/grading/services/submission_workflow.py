@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.assignments.models import QuestionPart
+from apps.assignments.readiness import assignment_readiness
 
 from ..models import GradingResult, ReferenceAnswer, StudentSubmission, SubmissionAnswerPart
 from .grading_pipeline import grade_question_part, map_submission_answers
@@ -99,11 +100,7 @@ def validate_criterion_grades(question, grade):
 
 
 def validate_submission_ready_for_grading(submission):
-    questions = list(
-        question_queryset_for_assignment(submission.assignment)
-        .select_related("reference_answer")
-        .prefetch_related("rubric_criteria")
-    )
+    questions, _, _, _ = assignment_readiness(submission.assignment)
 
     if not questions:
         raise SubmissionNotReadyError("Add question parts before grading submissions.")
@@ -111,13 +108,18 @@ def validate_submission_ready_for_grading(submission):
     missing_reference_answers = []
     missing_rubric = []
     for question in questions:
-        if question.max_marks is None or question.max_marks <= 0:
+        if not question.text.strip() or question.max_marks is None or question.max_marks <= 0:
             raise SubmissionNotReadyError(
                 f"Set positive total marks for {question.display_label} before grading."
             )
         criteria = list(question.rubric_criteria.all())
         if criteria and (
-            any(criterion.max_points <= 0 for criterion in criteria)
+            any(
+                criterion.max_points <= 0
+                or not criterion.title.strip()
+                or not criterion.description.strip()
+                for criterion in criteria
+            )
             or sum(criterion.max_points for criterion in criteria) != question.max_marks
         ):
             raise SubmissionNotReadyError(
@@ -163,8 +165,11 @@ def run_grading_pipeline(submission):
             raise SubmissionGradingInProgressError("This submission is already being graded.")
         original_status = submission.grading_status
         submission.grading_status = StudentSubmission.GradingStatus.GRADING
+        submission.finalized_at = None
         submission.last_error = ""
-        submission.save(update_fields=("grading_status", "last_error", "updated_at"))
+        submission.save(
+            update_fields=("grading_status", "finalized_at", "last_error", "updated_at")
+        )
 
     try:
         if submission.raw_response_text.strip():
@@ -352,14 +357,56 @@ def save_grading_review(
         if submission.total_score is not None
         else StudentSubmission.GradingStatus.PENDING
     )
-    submission.save(update_fields=("total_score", "grading_status", "updated_at"))
+    submission.finalized_at = None
+    submission.save(update_fields=("total_score", "grading_status", "finalized_at", "updated_at"))
 
     return grading_result
 
 
+@transaction.atomic
 def finalize_submission(submission):
-    submission.grading_status = StudentSubmission.GradingStatus.FINALIZED
-    submission.finalized_at = timezone.now()
+    submission = StudentSubmission.objects.select_for_update().get(pk=submission.pk)
+    if submission.grading_status == StudentSubmission.GradingStatus.GRADING:
+        raise SubmissionGradingInProgressError("Wait for grading to finish before finalizing.")
+    questions, marks_ready, _, _ = assignment_readiness(submission.assignment)
+    results = {r.question_part_id: r for r in submission.grading_results.select_for_update()}
+    if not marks_ready or set(results) != {q.pk for q in questions}:
+        raise SubmissionNotReadyError("Enter valid grades for every question before finalizing.")
+    for question in questions:
+        result = results[question.pk]
+        if result.needs_review:
+            raise SubmissionNotReadyError("Clear all review flags before finalizing.")
+        score = result.final_score if result.final_score is not None else result.ai_score
+        if (
+            score is None
+            or result.max_score != question.max_marks
+            or not 0 <= score <= question.max_marks
+        ):
+            raise SubmissionNotReadyError(
+                "Every question needs a valid score within its total marks."
+            )
+        if result.criterion_results:
+            rows = result.criterion_results
+            try:
+                totals = [Decimal(str(row["final_score"])) for row in rows]
+                maxima = [Decimal(str(row["max_points"])) for row in rows]
+                valid = all(
+                    v.is_finite() and m.is_finite() and m > 0 and 0 <= v <= m
+                    for v, m in zip(totals, maxima)
+                )
+                valid = valid and len({row["criterion_id"] for row in rows}) == len(rows)
+                valid = valid and sum(maxima) == question.max_marks and sum(totals) == score
+            except (KeyError, ValueError, ArithmeticError, TypeError):
+                valid = False
+            if not valid:
+                raise SubmissionNotReadyError("Complete every rubric score before finalizing.")
     submission.total_score = calculate_submission_total(submission)
-    submission.save(update_fields=("grading_status", "finalized_at", "total_score", "updated_at"))
+    if submission.total_score is None:
+        raise SubmissionNotReadyError("Complete every question before finalizing.")
+    if submission.grading_status != StudentSubmission.GradingStatus.FINALIZED:
+        submission.grading_status = StudentSubmission.GradingStatus.FINALIZED
+        submission.finalized_at = timezone.now()
+        submission.save(
+            update_fields=("grading_status", "finalized_at", "total_score", "updated_at")
+        )
     return submission

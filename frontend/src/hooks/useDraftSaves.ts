@@ -1,35 +1,56 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
-type Draft = { dirty: boolean; validate: () => void; save: () => Promise<unknown> }
+import { DraftStore, type Draft, type SaveOptions } from '../lib/draftStore'
 
 export function useDraftSaves() {
-  const entries = useRef(new Map<string, Draft>())
+  const shared = useContext(DraftContext)
+  const store = useRef(new DraftStore())
   const saving = useRef(false)
   const [isSaving, setIsSaving] = useState(false)
-  const register = useCallback((key: string, draft: Draft) => {
-    entries.current.set(key, draft)
-    return () => {
-      if (entries.current.get(key) === draft) entries.current.delete(key)
-    }
+  const [hasChanges, setHasChanges] = useState(false)
+  const publish = useCallback(() => {
+    setHasChanges(store.current.isDirty())
   }, [])
-  const saveAll = async () => {
+  const register = useCallback(
+    (key: string, draft: Draft) => {
+      const unregister = store.current.register(key, draft)
+      publish()
+      return () => {
+        unregister()
+        // Cleanup and replacement happen in the same effect cycle.
+        queueMicrotask(publish)
+      }
+    },
+    [publish],
+  )
+  const isDirty = useCallback((key?: string) => store.current.isDirty(key), [])
+  const discard = () => {
+    store.current.discard()
+    publish()
+  }
+  const saveAll = async (options?: SaveOptions) => {
     if (saving.current) throw new Error('Please wait for saving to finish.')
     saving.current = true
     setIsSaving(true)
     try {
-      // Snapshot all drafts before query refreshes can change the registered entries.
-      const drafts = [...entries.current.values()]
-      drafts.forEach((draft) => draft.validate())
-      for (const draft of drafts) if (draft.dirty) await draft.save()
+      await store.current.saveAll(options)
     } finally {
       saving.current = false
+      publish()
       setIsSaving(false)
     }
   }
-  return { register, saveAll, isSaving }
+  return shared ?? { register, saveAll, isSaving, hasChanges, isDirty, discard }
 }
 
-export type DraftSaves = ReturnType<typeof useDraftSaves>
+export type DraftSaves = {
+  register: (key: string, draft: Draft) => () => void
+  saveAll: (options?: SaveOptions) => Promise<void>
+  isSaving: boolean
+  hasChanges: boolean
+  isDirty: (key?: string) => boolean
+  discard: () => void
+}
 const DraftContext = createContext<DraftSaves | null>(null)
 export const WorkflowDraftProvider = DraftContext.Provider
 

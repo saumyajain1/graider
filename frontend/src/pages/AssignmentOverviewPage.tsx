@@ -7,8 +7,10 @@ import {
   generateQuestions,
   getAssignment,
   updateAssignment,
+  previewAssignmentSource,
   type AssignmentPayload,
 } from '../api/assignments'
+import { ApiError } from '../api/client'
 import { getApiErrorMessage } from '../api/errors'
 import { AIButton } from '../components/AIButton'
 import { QueryError } from '../components/QueryError'
@@ -35,6 +37,32 @@ export function AssignmentOverviewPage() {
     enabled: Boolean(assignmentId),
   })
 
+  const [sourceMode, setSourceMode] = useState<'file' | 'text'>('file')
+  const [fileInputVersion, setFileInputVersion] = useState(0)
+  const [previewFile, setPreviewFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const previewMutation = useMutation({
+    mutationFn: (file: File) => previewAssignmentSource(assignmentId!, file),
+    onSuccess: (_, file) => {
+      setPreviewFile(file)
+      setFileError(null)
+    },
+    onError: (error) => setFileError(getApiErrorMessage(error)),
+  })
+  const validateSource = () => {
+    if (!form.title.trim()) throw new Error('Enter an assignment title before continuing.')
+    if (
+      form.source_file &&
+      sourceMode === 'file' &&
+      (previewFile !== form.source_file || !previewMutation.data)
+    )
+      throw new ApiError('Preview the replacement file text before saving.', 400, null)
+  }
+  const sourcePayload = (payload: AssignmentPayload): AssignmentPayload => {
+    validateSource()
+    return { ...payload, source_text_mode: payload.source_file ? sourceMode : undefined }
+  }
+
   const savedTitle = assignmentQuery.data?.title
   const savedCourse = assignmentQuery.data?.course_name
   const savedDescription = assignmentQuery.data?.description
@@ -51,8 +79,17 @@ export function AssignmentOverviewPage() {
   }, [savedTitle, savedCourse, savedDescription, savedText])
 
   const updateMutation = useMutation({
-    mutationFn: (payload: AssignmentPayload) => updateAssignment(assignmentId!, payload),
+    mutationFn: (payload: AssignmentPayload) =>
+      updateAssignment(assignmentId!, sourcePayload(payload)),
     onSuccess: async (assignment) => {
+      setFileInputVersion((version) => version + 1)
+      setForm({
+        title: assignment.title,
+        course_name: assignment.course_name,
+        description: assignment.description,
+        raw_assignment_text: assignment.raw_assignment_text,
+        source_file: null,
+      })
       queryClient.setQueryData(['assignments', assignmentId], assignment)
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
@@ -60,10 +97,12 @@ export function AssignmentOverviewPage() {
 
   const regenerateMutation = useMutation({
     mutationFn: async (payload: AssignmentPayload) => {
-      await updateAssignment(assignmentId!, payload)
+      await updateAssignment(assignmentId!, sourcePayload(payload))
       return generateQuestions(assignmentId!, true)
     },
     onSuccess: async () => {
+      setFileInputVersion((version) => version + 1)
+      setForm((current) => ({ ...current, source_file: null }))
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
@@ -89,7 +128,7 @@ export function AssignmentOverviewPage() {
           form.raw_assignment_text !== assignmentQuery.data?.raw_assignment_text ||
           Boolean(form.source_file)),
       validate: () => {
-        if (!form.title.trim()) throw new Error('Enter an assignment title before continuing.')
+        validateSource()
       },
       save: () => updateMutation.mutateAsync(form),
     },
@@ -172,6 +211,7 @@ export function AssignmentOverviewPage() {
         >
           <fieldset
             disabled={
+              previewMutation.isPending ||
               drafts.isSaving ||
               updateMutation.isPending ||
               regenerateMutation.isPending ||
@@ -221,17 +261,81 @@ export function AssignmentOverviewPage() {
                   Replace source file
                 </span>
                 <input
+                  key={fileInputVersion}
                   type="file"
                   accept=".txt,.pdf"
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setForm((current) => ({
                       ...current,
                       source_file: event.target.files?.[0] ?? null,
                     }))
-                  }
+                    setPreviewFile(null)
+                    setFileError(null)
+                    previewMutation.reset()
+                    setSourceMode('file')
+                  }}
                   className="block w-full rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500"
                 />
               </label>
+              {form.source_file && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-medium text-slate-800">
+                    Which text should this assignment use?
+                  </p>
+                  <label className="flex gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="source-mode"
+                      checked={sourceMode === 'file'}
+                      onChange={() => setSourceMode('file')}
+                    />
+                    Use text from replacement file
+                  </label>
+                  <label className="flex gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="source-mode"
+                      checked={sourceMode === 'text'}
+                      onChange={() => setSourceMode('text')}
+                    />
+                    Keep edited assignment text
+                  </label>
+                  {sourceMode === 'file' && (
+                    <>
+                      <button
+                        type="button"
+                        className="workflow-button"
+                        onClick={() => previewMutation.mutate(form.source_file!)}
+                      >
+                        Preview replacement text
+                      </button>
+                      {previewFile === form.source_file && previewMutation.data && (
+                        <div>
+                          <p className="font-medium text-sm">Extracted text preview</p>
+                          <p className="mt-2 whitespace-pre-wrap max-h-80 overflow-auto rounded-xl bg-white p-4 text-sm">
+                            {previewMutation.data.extracted_text}
+                          </p>
+                          {previewMutation.data.ingestion_notes && (
+                            <p className="mt-2 text-sm text-amber-800">
+                              {previewMutation.data.ingestion_notes}
+                            </p>
+                          )}
+                          <p className="mt-2 text-sm text-slate-600">
+                            Saving will replace the assignment text below with this preview. You can
+                            edit it after saving.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {fileError && (
+                    <p role="alert" className="text-sm text-rose-700">
+                      {fileError}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">
                   Assignment text

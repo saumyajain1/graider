@@ -428,6 +428,10 @@ class TargetQuestionSerializer(serializers.Serializer):
     question_part_id = serializers.IntegerField(required=False, allow_null=True)
 
 
+class ArtifactGenerationSerializer(TargetQuestionSerializer):
+    replace_existing = serializers.BooleanField(default=False)
+
+
 class SubmissionCsvUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
 

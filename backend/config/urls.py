@@ -3,6 +3,7 @@ from django.urls import include, path, re_path
 from django.views.decorators.csrf import ensure_csrf_cookie
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.accounts.admin_login import admin_google_login
 from apps.accounts.google import google_callback
 
 from .views import health, privacy, public_home, spa_index
@@ -11,6 +12,7 @@ urlpatterns = [
     path("about/", public_home, name="public-home"),
     path("privacy/", privacy, name="privacy"),
     path("health/", health, name="health"),
+    path("admin/google/login/", admin_google_login, name="admin-google-login"),
     path("admin/", admin.site.urls),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

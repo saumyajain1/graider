@@ -16,6 +16,7 @@ import {
 } from '../api/grading'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack } from '../components/WorkflowNavigation'
+import { useDraft, useDraftSaves } from '../hooks/useDraftSaves'
 import { formatStatus } from '../lib/format'
 
 type ReviewPayload = {
@@ -45,7 +46,7 @@ function ReviewEditor({
   answerPart?: SubmissionAnswerPart
   gradingResult?: GradingResult
   isBusy: boolean
-  onSave: (payload: ReviewPayload) => void
+  onSave: (payload: ReviewPayload) => Promise<unknown>
   onTotal: (questionId: number, total: number | null) => void
 }) {
   const criteria = gradingResult?.criterion_results.length
@@ -99,31 +100,47 @@ function ReviewEditor({
       ...current,
       rows: current.rows.map((row) => (row.criterion_id === id ? { ...row, ...changes } : row)),
     }))
+  const payload = {
+    question_part_id: question.question_part_id,
+    criterion_results: draft.rows,
+    final_feedback: draft.feedback,
+    needs_review: draft.needsReview,
+  }
+  const validate = () => {
+    if (!validSetup)
+      throw new Error(
+        'Set valid question marks and rubric allocations before saving review scores.',
+      )
+    if (
+      draft.rows.some(
+        (row) =>
+          row.final_score !== null &&
+          scoreCents(
+            row.final_score,
+            criteria.find((criterion) => criterion.criterion_id === row.criterion_id)!.max_points,
+          ) === null,
+      )
+    )
+      throw new Error(
+        'Each score must be between zero and its criterion maximum, with at most two decimal places.',
+      )
+  }
+  useDraft(`review-${question.question_part_id}`, {
+    dirty: JSON.stringify(draft) !== saved,
+    validate,
+    save: () => onSave(payload),
+  })
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        const invalid = draft.rows.find(
-          (row) =>
-            row.final_score !== null &&
-            scoreCents(
-              row.final_score,
-              criteria.find((criterion) => criterion.criterion_id === row.criterion_id)!.max_points,
-            ) === null,
-        )
-        if (invalid) {
-          setError(
-            'Each score must be between zero and its criterion maximum, with at most two decimal places.',
-          )
-          return
+        try {
+          validate()
+          setError(null)
+          void onSave(payload).catch(() => {})
+        } catch (error) {
+          setError(error instanceof Error ? error.message : 'Could not save review.')
         }
-        setError(null)
-        onSave({
-          question_part_id: question.question_part_id,
-          criterion_results: draft.rows,
-          final_feedback: draft.feedback,
-          needs_review: draft.needsReview,
-        })
       }}
       className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm"
     >
@@ -300,6 +317,7 @@ function ReviewEditor({
 export function SubmissionReviewPage() {
   const { assignmentId, submissionId } = useParams()
   const queryClient = useQueryClient()
+  const drafts = useDraftSaves()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
@@ -338,7 +356,10 @@ export function SubmissionReviewPage() {
   })
 
   const finalizeMutation = useMutation({
-    mutationFn: () => finalizeSubmission(Number(submissionId)),
+    mutationFn: async () => {
+      await drafts.saveAll({ dirtyOnly: true })
+      return finalizeSubmission(Number(submissionId))
+    },
     onSuccess: async () => {
       setErrorMessage(null)
       setStatusMessage('Submission finalized.')
@@ -426,27 +447,28 @@ export function SubmissionReviewPage() {
             Mark this review complete
           </h2>
           <p className="mt-4 text-sm leading-6 text-fuchsia-100/72">
-            Finalizing saves the reviewed total and marks this submission complete. You can return
-            to edit the scores and feedback later.
+            Save and finalize saves your edits, checks that every question is scored, and marks this
+            submission complete. Clear all review flags first. Editing a finalized review reopens
+            it.
           </p>
           <button
             type="button"
             disabled={
               finalizeMutation.isPending ||
               updateMutation.isPending ||
-              grading.grading_results.length === 0 ||
-              grading.grading_results.some((result) => Number(result.max_score) <= 0) ||
-              submission.total_score === null ||
-              submission.grading_status === 'finalized'
+              drafts.isSaving ||
+              !grading.questions.length ||
+              submission.grading_status === 'grading' ||
+              (submission.grading_status === 'finalized' && !drafts.hasChanges)
             }
             onClick={() => finalizeMutation.mutate()}
             className="mt-6 inline-flex rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submission.grading_status === 'finalized'
+            {submission.grading_status === 'finalized' && !drafts.hasChanges
               ? 'Finalized'
               : finalizeMutation.isPending
                 ? 'Finalizing...'
-                : 'Finalize submission'}
+                : 'Save and finalize'}
           </button>
         </div>
       </section>
@@ -522,12 +544,13 @@ export function SubmissionReviewPage() {
               (result) => result.question_part_id === question.question_part_id,
             )}
             isBusy={
+              drafts.isSaving ||
               updateMutation.isPending ||
               finalizeMutation.isPending ||
               submission.grading_status === 'grading'
             }
             answerPart={answerPartsByQuestionId.get(question.question_part_id)}
-            onSave={(payload) => updateMutation.mutate(payload)}
+            onSave={(payload) => updateMutation.mutateAsync(payload)}
             onTotal={onTotal}
           />
         ))}

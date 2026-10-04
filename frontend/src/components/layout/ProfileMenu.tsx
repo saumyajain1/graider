@@ -5,10 +5,12 @@ import { getApiErrorMessage } from '../../api/errors'
 import { useCurrentUser, useLogout } from '../../hooks/useAuth'
 import { GoogleIcon } from '../GoogleIcon'
 import { Icon } from '../Icon'
+import { useLeaveAction } from '../../hooks/useLeaveAction'
 
 export function ProfileMenu() {
   const { user } = useCurrentUser()
   const logout = useLogout()
+  const leave = useLeaveAction()
   const navigate = useNavigate()
   const details = useRef<HTMLDetailsElement>(null)
 
@@ -76,7 +78,11 @@ export function ProfileMenu() {
           type="button"
           disabled={logout.isPending}
           onClick={() =>
-            logout.mutate(undefined, { onSuccess: () => navigate('/login', { replace: true }) })
+            leave(() =>
+              logout.mutateAsync(undefined, {
+                onSuccess: () => navigate('/login', { replace: true }),
+              }),
+            )
           }
           className="mt-1 flex items-center gap-2 w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 disabled:opacity-60"
         >

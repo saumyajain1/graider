@@ -15,6 +15,8 @@ import {
   type RubricQuestion,
 } from '../api/grading'
 import { AIButton } from '../components/AIButton'
+import { useConfirmation } from '../hooks/useConfirmation'
+import { ReplacementConfirmation } from '../components/ReplacementConfirmation'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
 import { WorkflowDraftProvider, useDraft, useDraftSaves } from '../hooks/useDraftSaves'
@@ -109,14 +111,16 @@ function RubricQuestionSection({
   isBusy,
   onGenerate,
   isGenerating,
+  replacementVersion,
   onCreate,
   onUpdate,
   onDelete,
 }: {
   group: RubricQuestion
   isGenerating: boolean
+  replacementVersion: number
   isBusy: boolean
-  onGenerate: () => void
+  onGenerate: () => Promise<boolean>
   onCreate: (payload: { title: string; description: string; max_points: string }) => Promise<void>
   onUpdate: (
     criterionId: number,
@@ -129,6 +133,10 @@ function RubricQuestionSection({
     description: '',
     max_points: '',
   })
+
+  useEffect(() => {
+    setNewCriterion({ title: '', description: '', max_points: '' })
+  }, [replacementVersion])
 
   const newDirty = Object.values(newCriterion).some((value) => value.trim())
   const create = async () => {
@@ -168,7 +176,13 @@ function RubricQuestionSection({
               0,
             ) / 100}
           </span>
-          <AIButton busy={isGenerating} onClick={() => onGenerate()}>
+          <AIButton
+            busy={isGenerating}
+            onClick={async () => {
+              if (await onGenerate())
+                setNewCriterion({ title: '', description: '', max_points: '' })
+            }}
+          >
             {isGenerating ? 'Generating…' : 'Generate with AI'}
           </AIButton>
         </div>
@@ -260,6 +274,9 @@ export function AssignmentRubricPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const confirmation = useConfirmation()
+  const [replacementVersions, setReplacementVersions] = useState<Record<number, number>>({})
+  const [generationMessage, setGenerationMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const assignmentQuery = useQuery({
@@ -300,7 +317,7 @@ export function AssignmentRubricPage() {
     }) => updateRubricCriterion(criterionId, payload),
     onSuccess: async () => {
       setErrorMessage(null)
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'rubric'] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
     onError: (error) => setErrorMessage(getApiErrorMessage(error)),
   })
@@ -317,19 +334,68 @@ export function AssignmentRubricPage() {
   })
 
   const generateMutation = useMutation({
-    mutationFn: (questionPartId?: number) =>
-      generateRubric(
-        assignmentId!,
-        questionPartId ? { question_part_id: questionPartId } : undefined,
-      ),
-    onSuccess: async () => {
+    mutationFn: (target: { questionId?: number; replace: boolean }) =>
+      generateRubric(assignmentId!, {
+        question_part_id: target.questionId,
+        replace_existing: target.replace,
+      }),
+    onSuccess: async (items, target) => {
+      if (target.replace)
+        setReplacementVersions((current) => {
+          const next = { ...current }
+          items.forEach((group) => {
+            next[group.question_part_id] = (next[group.question_part_id] ?? 0) + 1
+          })
+          return next
+        })
+      setGenerationMessage(
+        items.length
+          ? `Generated ${items.length} rubrics.`
+          : 'Nothing is missing. Your existing content was kept.',
+      )
       setErrorMessage(null)
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'rubric'] })
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
-    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onError: (error) => {
+      setGenerationMessage(null)
+      setErrorMessage(getApiErrorMessage(error))
+    },
   })
+
+  const generate = async (questionId?: number, replace = false) => {
+    const hasSaved =
+      questionId !== undefined
+        ? Boolean(
+            rubricQuery.data?.find((group) => group.question_part_id === questionId)?.criteria
+              .length,
+          )
+        : true
+    if (
+      replace &&
+      (hasSaved || drafts.isDirty()) &&
+      !(await confirmation.ask(
+        questionId === undefined
+          ? 'Replace all rubric criteria, including your edits, with AI-generated content?'
+          : 'Replace this question’s rubric criteria, including any unsaved edits, with AI-generated content?',
+      ))
+    )
+      return false
+    try {
+      if (!replace) await drafts.saveAll({ dirtyOnly: true })
+      await generateMutation.mutateAsync({ questionId, replace })
+      return true
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(
+          error,
+          error instanceof Error ? error.message : 'Could not generate rubric criteria.',
+        ),
+      )
+      return false
+    }
+  }
 
   if (assignmentQuery.isPending || rubricQuery.isPending) {
     return <div className="text-sm text-slate-600">Loading rubric...</div>
@@ -356,6 +422,7 @@ export function AssignmentRubricPage() {
 
   return (
     <WorkflowDraftProvider value={drafts}>
+      <ReplacementConfirmation confirmation={confirmation} />
       <div className="space-y-8">
         <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
           <div className="rounded-[2rem] border border-slate-200 p-6">
@@ -381,7 +448,11 @@ export function AssignmentRubricPage() {
               fails, you can still add criteria manually.
             </p>
             <AIButton
-              busy={generateMutation.isPending && generateMutation.variables === undefined}
+              busy={
+                generateMutation.isPending &&
+                generateMutation.variables?.questionId === undefined &&
+                !generateMutation.variables?.replace
+              }
               disabled={
                 drafts.isSaving ||
                 generateMutation.isPending ||
@@ -389,15 +460,52 @@ export function AssignmentRubricPage() {
                 updateMutation.isPending ||
                 deleteMutation.isPending
               }
-              onClick={() => generateMutation.mutate(undefined)}
+              onClick={() => {
+                void generate(undefined, false)
+              }}
               className="mt-6"
             >
-              {generateMutation.isPending && generateMutation.variables === undefined
+              {generateMutation.isPending &&
+              generateMutation.variables?.questionId === undefined &&
+              !generateMutation.variables?.replace
                 ? 'Generating...'
-                : 'Generate all rubric criteria'}
+                : 'Generate missing rubric criteria'}
             </AIButton>
+            <AIButton
+              busy={
+                generateMutation.isPending &&
+                generateMutation.variables?.questionId === undefined &&
+                generateMutation.variables?.replace
+              }
+              disabled={
+                drafts.isSaving ||
+                generateMutation.isPending ||
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                deleteMutation.isPending
+              }
+              className="mt-3"
+              onClick={() => {
+                void generate(undefined, true)
+              }}
+            >
+              {generateMutation.isPending &&
+              generateMutation.variables?.questionId === undefined &&
+              generateMutation.variables?.replace
+                ? 'Replacing…'
+                : 'Replace all rubric criteria'}
+            </AIButton>
+            <p className="mt-3 text-xs text-fuchsia-100/70">
+              Generate missing items keeps saved content. Replacement asks for confirmation.
+            </p>
           </div>
         </section>
+
+        {generationMessage && (
+          <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">
+            {generationMessage}
+          </p>
+        )}
 
         {errorMessage ? (
           <div
@@ -414,9 +522,10 @@ export function AssignmentRubricPage() {
               <RubricQuestionSection
                 key={group.question_part_id}
                 group={group}
+                replacementVersion={replacementVersions[group.question_part_id] ?? 0}
                 isGenerating={
                   generateMutation.isPending &&
-                  generateMutation.variables === group.question_part_id
+                  generateMutation.variables?.questionId === group.question_part_id
                 }
                 isBusy={
                   drafts.isSaving ||
@@ -425,9 +534,7 @@ export function AssignmentRubricPage() {
                   updateMutation.isPending ||
                   deleteMutation.isPending
                 }
-                onGenerate={() => {
-                  generateMutation.mutate(group.question_part_id)
-                }}
+                onGenerate={() => generate(group.question_part_id, true)}
                 onCreate={async (payload) => {
                   await createMutation.mutateAsync({
                     question_part_id: group.question_part_id,

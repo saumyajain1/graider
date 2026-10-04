@@ -1,5 +1,6 @@
 import { getApiErrorMessage } from '../api/errors'
 import { useAuthOptions, useGoogleAuth } from '../hooks/useAuth'
+import { useLeaveAction } from '../hooks/useLeaveAction'
 import { GoogleIcon } from './GoogleIcon'
 
 export function GoogleButton({
@@ -11,6 +12,7 @@ export function GoogleButton({
 }) {
   const options = useAuthOptions()
   const google = useGoogleAuth()
+  const leave = useLeaveAction()
 
   if (!options.data?.google_enabled) return null
 
@@ -19,7 +21,7 @@ export function GoogleButton({
       <button
         type="button"
         disabled={disabled || google.isPending}
-        onClick={() => google.mutate(process)}
+        onClick={() => leave(() => google.mutateAsync(process))}
         className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
       >
         <GoogleIcon />

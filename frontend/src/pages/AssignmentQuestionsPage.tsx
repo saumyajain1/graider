@@ -255,7 +255,7 @@ export function AssignmentQuestionsPage() {
     onError: (error) => setErrorMessage(getApiErrorMessage(error)),
     onMutate: () => setErrorMessage(null),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
   })
 

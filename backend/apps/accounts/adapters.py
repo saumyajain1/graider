@@ -8,6 +8,7 @@ from allauth.socialaccount.providers.base.constants import AuthError
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import HttpResponseRedirect
+from django.urls import reverse
 
 from .models import User
 from .throttles import IPScopedRateThrottle
@@ -18,7 +19,9 @@ def frontend_url(path, **params):
     return f"{url}?{urlencode(params)}" if params else url
 
 
-def auth_redirect(code, *, connect=False):
+def auth_redirect(code, *, connect=False, admin_login=False):
+    if admin_login:
+        return HttpResponseRedirect(f"{reverse('admin:login')}?{urlencode({'auth': code})}")
     return HttpResponseRedirect(frontend_url("/profile" if connect else "/login", auth=code))
 
 
@@ -30,7 +33,10 @@ class AccountAdapter(DefaultAccountAdapter):
         return frontend_url("/")
 
     def respond_user_inactive(self, request, user):
-        return auth_redirect("unavailable")
+        state = getattr(request, "graider_oauth_state", {})
+        return auth_redirect(
+            "unavailable", admin_login=bool(state.get("data", {}).get("admin_login"))
+        )
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
@@ -53,6 +59,12 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         return user
 
     def pre_social_login(self, request, sociallogin):
+        if sociallogin.state.get("data", {}).get("admin_login"):
+            if not (
+                sociallogin.is_existing and sociallogin.user.is_active and sociallogin.user.is_staff
+            ):
+                raise ImmediateHttpResponse(auth_redirect("denied", admin_login=True))
+            return
         connect = sociallogin.state.get("process") == AuthProcess.CONNECT
         if connect:
             # Bind the callback to the user who explicitly started linking.
@@ -88,5 +100,9 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         state = (extra_context or {}).get("state") or {}
         code = "cancelled" if error == AuthError.CANCELLED else "failed"
         raise ImmediateHttpResponse(
-            auth_redirect(code, connect=state.get("process") == AuthProcess.CONNECT)
+            auth_redirect(
+                code,
+                connect=state.get("process") == AuthProcess.CONNECT,
+                admin_login=bool(state.get("data", {}).get("admin_login")),
+            )
         )

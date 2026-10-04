@@ -54,14 +54,16 @@ class GoogleCallbackView(OAuth2CallbackView):
             expected_user = state.get("data", {}).get("user_id")
             actual_user = request.user.pk if request.user.is_authenticated else None
             if expected_user != actual_user:
-                return None, auth_redirect("session_changed")
+                return None, auth_redirect(
+                    "session_changed", admin_login=bool(state.get("data", {}).get("admin_login"))
+                )
         return state, response
 
 
 google_callback = GoogleCallbackView.adapter_view(GoogleOIDCAdapter)
 
 
-def redirect_to_google(request, provider, process):
+def redirect_to_google(request, provider, process, *, admin_next=None):
     nonce = secrets.token_urlsafe(32)
     params = provider.get_auth_params()
     params["nonce"] = nonce
@@ -69,5 +71,10 @@ def redirect_to_google(request, provider, process):
         request,
         process=process,
         auth_params=params,
-        data={"nonce": nonce, "user_id": request.user.pk if process == "connect" else None},
+        next_url=admin_next,
+        data={
+            "nonce": nonce,
+            "user_id": request.user.pk if process == "connect" else None,
+            "admin_login": bool(admin_next),
+        },
     )

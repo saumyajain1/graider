@@ -10,10 +10,21 @@ import { AssignmentReviewPage } from '../pages/AssignmentReviewPage'
 import { AssignmentRubricPage } from '../pages/AssignmentRubricPage'
 import { AssignmentSubmissionsPage } from '../pages/AssignmentSubmissionsPage'
 import { DashboardPage } from '../pages/DashboardPage'
+import { PasswordRecoveryPage } from '../pages/PasswordRecoveryPage'
 import { ProfilePage } from '../pages/ProfilePage'
 import { SubmissionReviewPage } from '../pages/SubmissionReviewPage'
 
 export const router = createBrowserRouter([
+  {
+    path: '/forgot-password',
+    element: <PasswordRecoveryPage />,
+    errorElement: <PageError standalone />,
+  },
+  {
+    path: '/reset-password',
+    element: <PasswordRecoveryPage confirm />,
+    errorElement: <PageError standalone />,
+  },
   {
     path: '/login',
     element: <PublicOnly />,

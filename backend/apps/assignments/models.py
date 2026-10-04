@@ -42,25 +42,23 @@ class Assignment(models.Model):
 
     @property
     def workflow_status(self):
+        from .readiness import assignment_readiness
+
+        questions, marks_ready, answers_ready, rubric_ready = assignment_readiness(self)
+        if not marks_ready:
+            return self.WorkflowStatus.DRAFT
+        if not answers_ready:
+            return self.WorkflowStatus.QUESTIONS_READY
+        if not rubric_ready:
+            return self.WorkflowStatus.REFERENCE_ANSWERS_READY
         submissions = getattr(self, "submissions", None)
         if submissions is not None and submissions.exists():
-            if submissions.exclude(grading_status="finalized").count() == 0:
+            if not submissions.exclude(grading_status="finalized").exists():
                 return self.WorkflowStatus.FINALIZED
             if submissions.filter(grading_status__in=["graded", "reviewed", "finalized"]).exists():
                 return self.WorkflowStatus.REVIEW_READY
             return self.WorkflowStatus.SUBMISSIONS_UPLOADED
-
-        question_parts = self.question_parts.filter(part_type=QuestionPart.PartType.QUESTION)
-        if not question_parts.exists():
-            return self.WorkflowStatus.DRAFT
-
-        if all(question.rubric_criteria.exists() for question in question_parts):
-            return self.WorkflowStatus.RUBRIC_READY
-
-        if all(hasattr(question, "reference_answer") for question in question_parts):
-            return self.WorkflowStatus.REFERENCE_ANSWERS_READY
-
-        return self.WorkflowStatus.QUESTIONS_READY
+        return self.WorkflowStatus.RUBRIC_READY
 
     def __str__(self):
         return self.title

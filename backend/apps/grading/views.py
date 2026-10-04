@@ -30,6 +30,7 @@ from .models import (
     SubmissionImport,
 )
 from .serializers import (
+    ArtifactGenerationSerializer,
     GradeAllResultSerializer,
     GradingResultReviewSerializer,
     GradingResultSerializer,
@@ -204,29 +205,52 @@ class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
 
 @extend_schema_view(
     post=api_schema(
-        request=TargetQuestionSerializer, response=ReferenceAnswerItemSerializer(many=True), ai=True
+        request=ArtifactGenerationSerializer,
+        response=ReferenceAnswerItemSerializer(many=True),
+        ai=True,
     ),
 )
 class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        serializer = TargetQuestionSerializer(data=request.data)
+        serializer = ArtifactGenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        replace_existing = serializer.validated_data["replace_existing"]
         target_question_id = serializer.validated_data.get("question_part_id")
         questions = question_queryset_for_assignment(assignment)
         if target_question_id is not None:
             questions = questions.filter(id=target_question_id)
 
+        if not replace_existing:
+            questions = questions.exclude(reference_answer__answer_text__regex=r"\S")
+
         if not questions.exists():
+            if (
+                target_question_id is None
+                or assignment.question_parts.filter(
+                    id=target_question_id, part_type="question"
+                ).exists()
+            ):
+                return Response([])
             return Response(
                 {"detail": "No target question parts were found for reference answer generation."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        items = []
+        prepared = []
         try:
             for question_part in questions:
-                parsed = generate_reference_answer(assignment, question_part)
+                prepared.append(
+                    (question_part, generate_reference_answer(assignment, question_part))
+                )
+        except LLMQuotaExceeded as exc:
+            return self.handle_quota_error(exc)
+        except (LLMConfigurationError, LLMGenerationError) as exc:
+            return self.handle_llm_error(exc)
+
+        items = []
+        with transaction.atomic():
+            for question_part, parsed in prepared:
                 reference_answer, created = ReferenceAnswer.objects.get_or_create(
                     question_part=question_part,
                     defaults={
@@ -234,17 +258,12 @@ class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
                         "source": ReferenceAnswer.Source.AI,
                     },
                 )
-                if not created:
+                if not created and (replace_existing or not reference_answer.answer_text.strip()):
                     reference_answer.answer_text = parsed.answer_text
                     reference_answer.source = ReferenceAnswer.Source.AI
                     reference_answer.version += 1
                     reference_answer.save()
-
                 items.append(build_reference_answer_item(question_part))
-        except LLMQuotaExceeded as exc:
-            return self.handle_quota_error(exc)
-        except (LLMConfigurationError, LLMGenerationError) as exc:
-            return self.handle_llm_error(exc)
 
         return Response(ReferenceAnswerItemSerializer(items, many=True).data)
 
@@ -312,21 +331,32 @@ class RubricListCreateView(TeacherScopedArtifactView):
 
 @extend_schema_view(
     post=api_schema(
-        request=TargetQuestionSerializer, response=RubricQuestionSerializer(many=True), ai=True
+        request=ArtifactGenerationSerializer, response=RubricQuestionSerializer(many=True), ai=True
     ),
 )
 class RubricGenerateView(TeacherScopedArtifactView):
     def post(self, request, assignment_id):
         assignment = self.get_assignment(assignment_id)
-        serializer = TargetQuestionSerializer(data=request.data)
+        serializer = ArtifactGenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        replace_existing = serializer.validated_data["replace_existing"]
         target_question_id = serializer.validated_data.get("question_part_id")
         questions = question_queryset_for_assignment(assignment).select_related("reference_answer")
         if target_question_id is not None:
             questions = questions.filter(id=target_question_id)
 
+        if not replace_existing:
+            questions = questions.filter(rubric_criteria__isnull=True)
+
         questions = list(questions)
         if not questions:
+            if (
+                target_question_id is None
+                or assignment.question_parts.filter(
+                    id=target_question_id, part_type="question"
+                ).exists()
+            ):
+                return Response([])
             return Response(
                 {"detail": "No target question parts were found for rubric generation."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -367,6 +397,9 @@ class RubricGenerateView(TeacherScopedArtifactView):
         generated_questions = []
         with transaction.atomic():
             for question_part, parsed in prepared:
+                # A teacher may have added criteria while the provider was responding.
+                if not replace_existing and question_part.rubric_criteria.exists():
+                    continue
                 question_part.rubric_criteria.all().delete()
                 for index, criterion in enumerate(parsed.criteria):
                     RubricCriterion.objects.create(
@@ -697,12 +730,17 @@ class GradingResultDetailView(TeacherScopedArtifactView):
 
 
 @extend_schema_view(
-    post=api_schema(response=StudentSubmissionSerializer),
+    post=api_schema(response=StudentSubmissionSerializer, errors={409: APIErrorSerializer}),
 )
 class SubmissionFinalizeView(TeacherScopedArtifactView):
     def post(self, request, submission_id):
         submission = self.get_submission(submission_id)
-        submission = finalize_submission(submission)
+        try:
+            submission = finalize_submission(submission)
+        except SubmissionNotReadyError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except SubmissionGradingInProgressError as exc:
+            return Response({"detail": str(exc)}, status=409)
         return Response(StudentSubmissionSerializer(submission).data)
 
 

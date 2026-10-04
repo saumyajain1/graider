@@ -27,6 +27,9 @@ def build_part_key(assignment):
 
 class AssignmentSerializer(serializers.ModelSerializer):
     source_file = serializers.FileField(write_only=True, required=False, allow_null=True)
+    source_text_mode = serializers.ChoiceField(
+        choices=["file", "text"], write_only=True, required=False
+    )
     source_file_url = serializers.SerializerMethodField()
     source_filename = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
@@ -42,6 +45,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
             "description",
             "raw_assignment_text",
             "source_file",
+            "source_text_mode",
             "source_file_url",
             "source_filename",
             "ingestion_notes",
@@ -65,6 +69,10 @@ class AssignmentSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         uploaded_file = attrs.get("source_file")
+        if attrs.get("source_text_mode") == "file" and uploaded_file is None:
+            raise serializers.ValidationError(
+                {"source_text_mode": "Choose a replacement file first."}
+            )
         if uploaded_file is not None and not is_supported_text_upload(uploaded_file):
             raise serializers.ValidationError(
                 {"source_file": "Only .txt and .pdf files are supported."}
@@ -88,6 +96,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         uploaded_file = validated_data.pop("source_file", None)
+        source_mode = validated_data.pop("source_text_mode", None)
         extracted_text = ""
         note = ""
 
@@ -95,7 +104,7 @@ class AssignmentSerializer(serializers.ModelSerializer):
             extracted_text, note = extract_text_from_uploaded_file(uploaded_file)
 
         raw_text = validated_data.get("raw_assignment_text", "").strip()
-        if not raw_text:
+        if not raw_text or source_mode == "file":
             if not extracted_text:
                 raise serializers.ValidationError(
                     {"source_file": (note or "No extractable text was found in the uploaded file.")}
@@ -120,13 +129,19 @@ class AssignmentSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         uploaded_file = validated_data.pop("source_file", None)
         note = instance.ingestion_notes
+        source_mode = validated_data.pop("source_text_mode", None)
         raw_text_provided = "raw_assignment_text" in validated_data
+        use_file = source_mode == "file" or (source_mode is None and not raw_text_provided)
+        if source_mode == "text" and not raw_text_provided:
+            raise serializers.ValidationError(
+                {"raw_assignment_text": "Provide the edited text to keep."}
+            )
 
         if uploaded_file is not None:
             extracted_text, note = extract_text_from_uploaded_file(uploaded_file)
-            if not raw_text_provided and extracted_text:
-                instance.raw_assignment_text = extracted_text
-            if not raw_text_provided and not extracted_text:
+            if use_file and extracted_text:
+                validated_data["raw_assignment_text"] = extracted_text
+            if use_file and not extracted_text:
                 raise serializers.ValidationError(
                     {"source_file": (note or "No extractable text was found in the uploaded file.")}
                 )
@@ -246,3 +261,18 @@ class QuestionGenerateSerializer(serializers.Serializer):
 
 class QuestionReorderSerializer(serializers.Serializer):
     question_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+
+
+class SourcePreviewSerializer(serializers.Serializer):
+    source_file = serializers.FileField()
+
+    def validate_source_file(self, value):
+        if not is_supported_text_upload(value):
+            raise serializers.ValidationError("Only .txt and .pdf files are supported.")
+        check_file_size(value, settings.GRAIDER_MAX_UPLOAD_BYTES)
+        return value
+
+
+class SourcePreviewResponseSerializer(serializers.Serializer):
+    extracted_text = serializers.CharField()
+    ingestion_notes = serializers.CharField(allow_blank=True)

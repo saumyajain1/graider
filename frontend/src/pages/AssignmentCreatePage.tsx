@@ -3,10 +3,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { createAssignment, type AssignmentPayload } from '../api/assignments'
+import { useDraft, useDraftSaves } from '../hooks/useDraftSaves'
 import { getApiErrorMessage } from '../api/errors'
 
 export function AssignmentCreatePage() {
   const navigate = useNavigate()
+  const drafts = useDraftSaves()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<AssignmentPayload>({
     title: '',
@@ -18,10 +20,23 @@ export function AssignmentCreatePage() {
 
   const createMutation = useMutation({
     mutationFn: createAssignment,
-    onSuccess: async (assignment) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
-      navigate(`/assignments/${assignment.id}/overview`)
     },
+  })
+
+  useDraft('new-assignment', {
+    dirty:
+      Boolean(form.source_file) ||
+      [form.title, form.course_name, form.description, form.raw_assignment_text].some((value) =>
+        value?.trim(),
+      ),
+    validate: () => {
+      if (!form.title.trim()) throw new Error('Enter an assignment title before saving.')
+      if (!form.raw_assignment_text.trim() && !form.source_file)
+        throw new Error('Add assignment text or a file before saving.')
+    },
+    save: () => createMutation.mutateAsync(form),
   })
 
   return (
@@ -41,7 +56,12 @@ export function AssignmentCreatePage() {
         className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]"
         onSubmit={(event) => {
           event.preventDefault()
-          createMutation.mutate(form)
+          createMutation.mutate(form, {
+            onSuccess: (assignment) => {
+              drafts.discard()
+              navigate(`/assignments/${assignment.id}/overview`)
+            },
+          })
         }}
       >
         <section className="rounded-[2rem] border border-slate-200 p-6">

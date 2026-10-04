@@ -4,6 +4,7 @@ from .views import (
     AssignmentDetailView,
     AssignmentListCreateView,
     AssignmentSourceFileView,
+    AssignmentSourcePreviewView,
     QuestionDetailView,
     QuestionGenerateView,
     QuestionListCreateView,
@@ -17,6 +18,11 @@ urlpatterns = [
         "<int:assignment_id>/source-file",
         AssignmentSourceFileView.as_view(),
         name="assignment-source-file",
+    ),
+    path(
+        "<int:assignment_id>/source-preview",
+        AssignmentSourcePreviewView.as_view(),
+        name="assignment-source-preview",
     ),
     path("<int:assignment_id>/questions", QuestionListCreateView.as_view(), name="question-list"),
     path(

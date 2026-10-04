@@ -25,6 +25,8 @@ from .serializers import (
     QuestionGenerateSerializer,
     QuestionPartSerializer,
     QuestionReorderSerializer,
+    SourcePreviewResponseSerializer,
+    SourcePreviewSerializer,
     build_part_key,
 )
 
@@ -276,3 +278,23 @@ class QuestionReorderView(TeacherScopedView):
 
         serializer = QuestionPartSerializer(assignment.question_parts.all(), many=True)
         return Response(serializer.data)
+
+
+@extend_schema_view(
+    post=api_schema(request=SourcePreviewSerializer, response=SourcePreviewResponseSerializer)
+)
+class AssignmentSourcePreviewView(TeacherScopedView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, assignment_id):
+        from .services import extract_text_from_uploaded_file
+
+        self.get_assignment(assignment_id)
+        serializer = SourcePreviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        text, notes = extract_text_from_uploaded_file(serializer.validated_data["source_file"])
+        if not text.strip():
+            return Response(
+                {"detail": notes or "No extractable text was found in this file."}, status=400
+            )
+        return Response({"extracted_text": text, "ingestion_notes": notes})

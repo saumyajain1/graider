@@ -150,7 +150,7 @@ export function updateReferenceAnswer(
 
 export function generateReferenceAnswers(
   assignmentId: string,
-  payload?: { question_part_id?: number },
+  payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
   return apiRequest<ReferenceAnswerItem[]>(
     `/api/assignments/${assignmentId}/reference-answers/generate`,
@@ -196,7 +196,10 @@ export function deleteRubricCriterion(criterionId: number) {
   })
 }
 
-export function generateRubric(assignmentId: string, payload?: { question_part_id?: number }) {
+export function generateRubric(
+  assignmentId: string,
+  payload?: { question_part_id?: number; replace_existing?: boolean },
+) {
   return apiRequest<RubricQuestion[]>(`/api/assignments/${assignmentId}/rubric/generate`, {
     method: 'POST',
     body: JSON.stringify(payload ?? {}),

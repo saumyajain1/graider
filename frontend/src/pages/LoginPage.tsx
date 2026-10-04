@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 
 import { useEffect } from 'react'
@@ -205,6 +206,14 @@ export function LoginPage() {
                   : 'Create account'}
             </button>
           </form>
+          {mode === 'login' && (
+            <Link
+              to="/forgot-password"
+              className="mt-4 inline-block text-sm text-fuchsia-700 underline"
+            >
+              Forgot your password?
+            </Link>
+          )}
         </section>
       </div>
       <footer className="mt-6 text-fuchsia-50/80">

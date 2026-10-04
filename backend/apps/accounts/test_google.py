@@ -91,6 +91,15 @@ class GoogleAuthTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return parse_qs(urlsplit(response.json()["redirect_url"]).query)
 
+    def start_admin(self, next_url="/admin/"):
+        csrf = self.client.get(reverse("admin:login")).cookies["csrftoken"].value
+        response = self.client.post(
+            reverse("admin-google-login"),
+            {"next": next_url, "csrfmiddlewaretoken": csrf},
+        )
+        self.assertEqual(response.status_code, 302, response.content)
+        return parse_qs(urlsplit(response.url).query)
+
     def callback(self, params, **claims):
         now = datetime.now(timezone.utc).timestamp()
         payload = {
@@ -391,6 +400,111 @@ class GoogleAuthTests(TestCase):
             )
             self.assertEqual(response.status_code, 429)
 
+    def test_admin_login_offers_google_and_retains_password_form(self):
+        response = self.client.get(reverse("admin:login"), {"next": "/admin/accounts/user/"})
+        self.assertContains(response, "Sign in with Google")
+        self.assertContains(response, reverse("admin-google-login"))
+        self.assertContains(response, 'name="password"')
+        self.assertContains(response, 'value="/admin/accounts/user/"')
+
+    def test_google_admin_sign_in_returns_to_requested_admin_page(self):
+        user = User.objects.create_superuser(email="google@example.com", password=None)
+        SocialAccount.objects.create(user=user, provider="google", uid="google-subject-123")
+        response = self.callback(self.start_admin("/admin/accounts/user/?q=teacher"))
+        self.assertRedirects(
+            response, "/admin/accounts/user/?q=teacher", fetch_redirect_response=False
+        )
+        self.assertEqual(self.client.get(reverse("me")).json()["id"], user.pk)
+        self.assertEqual(self.client.get(reverse("admin:index")).status_code, 200)
+        user.refresh_from_db()
+        self.assertFalse(user.has_usable_password())
+        self.assertFalse(SocialToken.objects.exists())
+
+    def test_admin_google_never_registers_promotes_or_links_an_account(self):
+        response = self.callback(self.start_admin())
+        self.assertRedirects(response, "/admin/login/?auth=denied", fetch_redirect_response=False)
+        self.assertFalse(User.objects.exists())
+        self.assertFalse(SocialAccount.objects.exists())
+        visitor = User.objects.create_user(email="google@example.com")
+        SocialAccount.objects.create(user=visitor, provider="google", uid="google-subject-123")
+        response = self.callback(self.start_admin())
+        self.assertRedirects(response, "/admin/login/?auth=denied", fetch_redirect_response=False)
+        self.assertEqual(self.client.get(reverse("me")).status_code, 401)
+        visitor.refresh_from_db()
+        self.assertFalse(visitor.is_staff)
+        self.assertFalse(visitor.is_superuser)
+        visitor.socialaccount_set.all().delete()
+        visitor.is_staff = True
+        visitor.save(update_fields=["is_staff"])
+        response = self.callback(self.start_admin())
+        self.assertRedirects(response, "/admin/login/?auth=denied", fetch_redirect_response=False)
+        self.assertFalse(SocialAccount.objects.exists())
+
+    def test_admin_google_requires_csrf_post_and_shares_login_throttle(self):
+        self.assertEqual(self.client.get(reverse("admin-google-login")).status_code, 405)
+        self.assertEqual(self.client.post(reverse("admin-google-login")).status_code, 403)
+        with patch.object(IPScopedRateThrottle, "THROTTLE_RATES", {"auth_google": "1/min"}):
+            self.start()
+            csrf = self.client.get(reverse("admin:login")).cookies["csrftoken"].value
+            response = self.client.post(
+                reverse("admin-google-login"), {"csrfmiddlewaretoken": csrf}
+            )
+            self.assertRedirects(
+                response, "/admin/login/?auth=rate_limited", fetch_redirect_response=False
+            )
+        self.assertEqual(self.requests, [])
+
+    def test_admin_google_ignores_external_next_and_arbitrary_scopes(self):
+        user = User.objects.create_superuser(email="google@example.com", password=None)
+        SocialAccount.objects.create(user=user, provider="google", uid="google-subject-123")
+        params = self.start_admin("https://attacker.example")
+        self.assertEqual(set(params["scope"][0].split()), {"openid", "email", "profile"})
+        self.assertEqual(params["code_challenge_method"], ["S256"])
+        self.assertRedirects(self.callback(params), "/admin/", fetch_redirect_response=False)
+
+    def test_admin_google_errors_return_to_admin_without_provider_details(self):
+        for error, code in [("access_denied", "cancelled"), ("private-error", "failed")]:
+            params = self.start_admin()
+            response = self.client.get(
+                reverse("google_callback"),
+                {"state": params["state"][0], "error": error, "error_description": "secret"},
+            )
+            self.assertRedirects(
+                response, f"/admin/login/?auth={code}", fetch_redirect_response=False
+            )
+            page = self.client.get(response.url)
+            self.assertContains(page, "Google sign-in")
+            self.assertNotContains(page, "secret")
+
+    def test_authenticated_staff_can_return_directly_but_nonstaff_cannot_switch_identity(self):
+        user = User.objects.create_superuser(email="google@example.com", password=None)
+        self.client.force_login(user)
+        csrf = self.client.get(reverse("auth-options")).cookies["csrftoken"].value
+        response = self.client.post(
+            reverse("admin-google-login"),
+            {"next": "/admin/accounts/user/", "csrfmiddlewaretoken": csrf},
+        )
+        self.assertRedirects(response, "/admin/accounts/user/", fetch_redirect_response=False)
+        visitor = User.objects.create_user(email="visitor@example.com")
+        self.client.force_login(visitor)
+        response = self.client.post(reverse("admin-google-login"), {"csrfmiddlewaretoken": csrf})
+        self.assertRedirects(response, "/admin/login/?auth=denied", fetch_redirect_response=False)
+        self.assertNotIn("socialaccount_states", self.client.session)
+
+    @override_settings(GOOGLE_LOGIN_ENABLED=False)
+    def test_admin_google_unconfigured_is_clear_and_cannot_start_login(self):
+        page = self.client.get(reverse("admin:login"))
+        self.assertNotContains(page, "Sign in with Google")
+        self.assertContains(page, "Google sign-in is not configured for this server.")
+        response = self.client.post(
+            reverse("admin-google-login"),
+            {"csrfmiddlewaretoken": page.cookies["csrftoken"].value},
+        )
+        self.assertRedirects(
+            response, "/admin/login/?auth=unavailable", fetch_redirect_response=False
+        )
+        self.assertNotIn("socialaccount_states", self.client.session)
+
     def test_google_registration_uses_existing_registration_limit(self):
         rates = {"auth_google": "10/min", "auth_register": "1/hour"}
         with patch.object(IPScopedRateThrottle, "THROTTLE_RATES", rates):
@@ -408,7 +522,7 @@ class GoogleAuthTests(TestCase):
     @override_settings(GOOGLE_LOGIN_ENABLED=False)
     def test_unconfigured_google_is_disabled_without_exposing_credentials(self):
         options = self.client.get(reverse("auth-options"))
-        self.assertEqual(options.json(), {"google_enabled": False})
+        self.assertEqual(options.json(), {"google_enabled": False, "password_reset_enabled": True})
         response = self.client.post(
             reverse("google-start"),
             {"process": "login"},

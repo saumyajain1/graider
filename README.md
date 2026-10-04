@@ -10,7 +10,7 @@ Graider is a personal project for AI-assisted grading. Teachers create assignmen
 - Generate questions, reference answers, and rubrics with configurable AI models and reasoning effort.
 - Add student submissions individually or import a CSV; review scores and feedback before finalizing.
 - Keep original uploads private, restrict access to their teacher, and enforce upload and AI token limits.
-- Register or sign in with Google, or connect it to an existing account from your profile.
+- Register or sign in with Google, connect or disconnect it safely, and manage your name and password.
 
 Built with session authentication and CSRF protection, persistent file storage, and CI covering backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
 
@@ -69,6 +69,8 @@ Enter credentials in Render's environment settings. For dotenv import, use produ
 
 The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. GitHub Actions triggers Render after publishing when its deploy hook is configured below. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
 
+Password recovery uses Brevo’s HTTPS email API. Set `BREVO_API_KEY` and `GRAIDER_FROM_EMAIL` in Render after verifying a sender; see [account and email setup](docs/ACCOUNT_SETUP.md). Locally, reset links print to the backend terminal when no email key is set.
+
 ## API documentation
 
 Open [Swagger UI](http://localhost:8000/api/docs/) to explore the API. Sign in to Graider first; **Try it out** uses your browser session and CSRF protection. The specification at `/api/schema/` is generated from the API serializers and views; CI validates it without a separately maintained OpenAPI file.
@@ -87,7 +89,7 @@ Google sign-in is optional; password accounts continue working without it. To en
 
 Use a consistent hostname locally; `localhost` and `127.0.0.1` require separate callback entries and have separate browser cookies. Only basic identity scopes are requested. Google tokens are not stored; subsequent requests use Django sessions. Startup adds allauth's tables through migrations and preserves existing data.
 
-User administration is available at `/admin/` with an authorized staff account; create one with `python manage.py createsuperuser` inside the backend or container.
+User administration is available at `/admin/` with an authorized staff account. Its login page accepts a password or a connected Google account and returns to the requested admin page. Google sign-in never grants admin permissions or creates an account through this page. Create an initial administrator with `python manage.py createsuperuser` inside the backend or container.
 
 ## CI/CD
 

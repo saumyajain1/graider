@@ -38,6 +38,7 @@ export type AssignmentPayload = {
   description: string
   raw_assignment_text: string
   source_file?: File | null
+  source_text_mode?: 'file' | 'text'
 }
 
 function toAssignmentFormData(payload: AssignmentPayload) {
@@ -46,6 +47,7 @@ function toAssignmentFormData(payload: AssignmentPayload) {
   formData.append('course_name', payload.course_name)
   formData.append('description', payload.description)
   formData.append('raw_assignment_text', payload.raw_assignment_text)
+  if (payload.source_text_mode) formData.append('source_text_mode', payload.source_text_mode)
 
   if (payload.source_file) {
     formData.append('source_file', payload.source_file)
@@ -136,4 +138,13 @@ export function generateQuestions(assignmentId: string, replaceExisting = true) 
     method: 'POST',
     body: JSON.stringify({ replace_existing: replaceExisting }),
   })
+}
+
+export function previewAssignmentSource(assignmentId: string, file: File) {
+  const body = new FormData()
+  body.append('source_file', file)
+  return apiRequest<{ extracted_text: string; ingestion_notes: string }>(
+    `/api/assignments/${assignmentId}/source-preview`,
+    { method: 'POST', body },
+  )
 }

@@ -122,7 +122,9 @@ class MarksWorkflowTests(APITestCase):
             criteria=[SimpleNamespace(title="Wrong", description="Wrong total", max_points=4)]
         )
         response = self.client.post(
-            reverse("rubric-generate", args=[self.assignment.id]), {}, format="json"
+            reverse("rubric-generate", args=[self.assignment.id]),
+            {"replace_existing": True},
+            format="json",
         )
         self.assertEqual(response.status_code, 502)
         self.assertTrue(RubricCriterion.objects.filter(pk=self.criterion.pk).exists())
@@ -132,7 +134,9 @@ class MarksWorkflowTests(APITestCase):
         self.question.max_marks = None
         self.question.save()
         response = self.client.post(
-            reverse("rubric-generate", args=[self.assignment.id]), {}, format="json"
+            reverse("rubric-generate", args=[self.assignment.id]),
+            {"replace_existing": True},
+            format="json",
         )
         self.assertEqual(response.status_code, 400)
         generate.assert_not_called()

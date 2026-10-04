@@ -12,6 +12,8 @@ import {
   type ReferenceAnswerItem,
 } from '../api/grading'
 import { AIButton } from '../components/AIButton'
+import { useConfirmation } from '../hooks/useConfirmation'
+import { ReplacementConfirmation } from '../components/ReplacementConfirmation'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
 import { WorkflowDraftProvider, useDraft, useDraftSaves } from '../hooks/useDraftSaves'
@@ -33,7 +35,7 @@ function ReferenceAnswerEditor({
 
   useEffect(() => {
     setAnswerText(item.answer_text)
-  }, [item.answer_text])
+  }, [item.answer_text, item.version])
 
   useDraft(`answer-${item.question_part_id}`, {
     dirty: answerText !== item.answer_text,
@@ -101,6 +103,8 @@ export function AssignmentReferenceAnswersPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const confirmation = useConfirmation()
+  const [generationMessage, setGenerationMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const assignmentQuery = useQuery({
@@ -141,12 +145,17 @@ export function AssignmentReferenceAnswersPage() {
   })
 
   const generateMutation = useMutation({
-    mutationFn: (questionPartId?: number) =>
-      generateReferenceAnswers(
-        assignmentId!,
-        questionPartId ? { question_part_id: questionPartId } : undefined,
-      ),
-    onSuccess: async () => {
+    mutationFn: (target: { questionId?: number; replace: boolean }) =>
+      generateReferenceAnswers(assignmentId!, {
+        question_part_id: target.questionId,
+        replace_existing: target.replace,
+      }),
+    onSuccess: async (items) => {
+      setGenerationMessage(
+        items.length
+          ? `Generated ${items.length} answers.`
+          : 'Nothing is missing. Your existing content was kept.',
+      )
       setErrorMessage(null)
       await queryClient.invalidateQueries({
         queryKey: ['assignments', assignmentId, 'reference-answers'],
@@ -154,8 +163,43 @@ export function AssignmentReferenceAnswersPage() {
       await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
       await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
-    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onError: (error) => {
+      setGenerationMessage(null)
+      setErrorMessage(getApiErrorMessage(error))
+    },
   })
+
+  const generate = async (questionId?: number, replace = false) => {
+    const hasSaved =
+      questionId !== undefined
+        ? Boolean(
+            answersQuery.data
+              ?.find((item) => item.question_part_id === questionId)
+              ?.answer_text.trim(),
+          )
+        : true
+    if (
+      replace &&
+      (hasSaved || drafts.isDirty()) &&
+      !(await confirmation.ask(
+        questionId === undefined
+          ? 'Replace all answers, including your edits, with AI-generated content?'
+          : 'Replace this question’s answers, including any unsaved edits, with AI-generated content?',
+      ))
+    )
+      return
+    try {
+      if (!replace) await drafts.saveAll({ dirtyOnly: true })
+      await generateMutation.mutateAsync({ questionId, replace })
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(
+          error,
+          error instanceof Error ? error.message : 'Could not generate answers.',
+        ),
+      )
+    }
+  }
 
   if (assignmentQuery.isPending || answersQuery.isPending) {
     return <div className="text-sm text-slate-600">Loading reference answers...</div>
@@ -182,6 +226,7 @@ export function AssignmentReferenceAnswersPage() {
 
   return (
     <WorkflowDraftProvider value={drafts}>
+      <ReplacementConfirmation confirmation={confirmation} />
       <div className="space-y-8">
         <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
           <div className="rounded-[2rem] border border-slate-200 p-6">
@@ -207,17 +252,52 @@ export function AssignmentReferenceAnswersPage() {
               continue the workflow.
             </p>
             <AIButton
-              busy={generateMutation.isPending && generateMutation.variables === undefined}
+              busy={
+                generateMutation.isPending &&
+                generateMutation.variables?.questionId === undefined &&
+                !generateMutation.variables?.replace
+              }
               disabled={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
-              onClick={() => generateMutation.mutate(undefined)}
+              onClick={() => {
+                void generate(undefined, false)
+              }}
               className="mt-6"
             >
-              {generateMutation.isPending && generateMutation.variables === undefined
+              {generateMutation.isPending &&
+              generateMutation.variables?.questionId === undefined &&
+              !generateMutation.variables?.replace
                 ? 'Generating...'
-                : 'Generate all answers'}
+                : 'Generate missing answers'}
             </AIButton>
+            <AIButton
+              busy={
+                generateMutation.isPending &&
+                generateMutation.variables?.questionId === undefined &&
+                generateMutation.variables?.replace
+              }
+              disabled={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
+              className="mt-3"
+              onClick={() => {
+                void generate(undefined, true)
+              }}
+            >
+              {generateMutation.isPending &&
+              generateMutation.variables?.questionId === undefined &&
+              generateMutation.variables?.replace
+                ? 'Replacing…'
+                : 'Replace all answers'}
+            </AIButton>
+            <p className="mt-3 text-xs text-fuchsia-100/70">
+              Generate missing items keeps saved content. Replacement asks for confirmation.
+            </p>
           </div>
         </section>
+
+        {generationMessage && (
+          <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">
+            {generationMessage}
+          </p>
+        )}
 
         {errorMessage ? (
           <div
@@ -236,10 +316,11 @@ export function AssignmentReferenceAnswersPage() {
                 item={item}
                 isBusy={drafts.isSaving || saveMutation.isPending || generateMutation.isPending}
                 isGenerating={
-                  generateMutation.isPending && generateMutation.variables === item.question_part_id
+                  generateMutation.isPending &&
+                  generateMutation.variables?.questionId === item.question_part_id
                 }
                 onGenerate={() => {
-                  generateMutation.mutate(item.question_part_id)
+                  void generate(item.question_part_id, true)
                 }}
                 onSave={(answerText) => {
                   return saveMutation.mutateAsync({ item, answer_text: answerText })
