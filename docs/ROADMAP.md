@@ -62,4 +62,3 @@ References: [Responses migration](https://developers.openai.com/api/docs/guides/
 | Shared AI allowance can be exhausted              | Consider optional controlled demo access if quotas and the provider cap do not provide sufficient availability for visitors.                                  |
 | Production password-recovery email                | Configure verified Brevo credentials and test delivery before relying on password recovery. Email-provider setup remains deferred.                            |
 | Manual job-history cleanup                        | Add a retention schedule that preserves active work and usage accounting and suits the hosting lifecycle.                                                     |
-| Source/deployed version difference                | Deploy a matching frontend/backend with the worker enabled, then verify a sample job and restart on the hosted service.                                       |

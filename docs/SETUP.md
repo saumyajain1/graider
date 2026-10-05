@@ -71,7 +71,7 @@ npm run build --prefix frontend
 
 ```sh
 DATABASE_URL= DJANGO_DEBUG=true AWS_ENDPOINT_URL_S3= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= \
-  OPENAI_API_KEY= python backend/manage.py test
+  OPENAI_API_KEY= python backend/manage.py test apps config
 ```
 
 PostgreSQL-specific concurrency tests require a disposable PostgreSQL database; see [benchmarks](BENCHMARKS.md#reproduce-the-current-checks). No test command should point to the production database.
