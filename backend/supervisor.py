@@ -64,8 +64,7 @@ def main():
     ]
     if not settings.GRAIDER_AI_JOBS_ENABLED:
         os.execv(sys.executable, commands[0])
-    if settings.GRAIDER_AI_JOBS_ENABLED:
-        commands.insert(0, [sys.executable, "manage.py", "run_ai_worker"])
+    commands.insert(0, [sys.executable, "manage.py", "run_ai_worker"])
     return supervise(commands, settings.GRAIDER_AI_DRAIN_SECONDS)
 
 

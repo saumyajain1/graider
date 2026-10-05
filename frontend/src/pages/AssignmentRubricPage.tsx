@@ -14,7 +14,6 @@ import {
   type RubricCriterion,
   type RubricQuestion,
 } from '../api/grading'
-import { isJobReceipt } from '../api/jobs'
 import type { AIJob } from '../api/jobs'
 import { useAIJobs } from '../hooks/useAIJobs'
 import { AIButton } from '../components/AIButton'
@@ -347,38 +346,18 @@ export function AssignmentRubricPage() {
         question_part_id: target.questionId,
         replace_existing: target.replace,
       }),
-    onSuccess: async (items, target) => {
-      if (isJobReceipt(items)) {
-        jobs.track(items)
-        if (target.replace)
-          setReplacementVersions((current) => {
-            const next = { ...current }
-            items.question_part_ids.forEach((id) => {
-              next[id] = (next[id] ?? 0) + 1
-            })
-            return next
-          })
-        setGenerationMessage('Rubric generation queued. You can navigate while it runs.')
-        setErrorMessage(null)
-        return
-      }
+    onSuccess: (items, target) => {
+      jobs.track(items)
       if (target.replace)
         setReplacementVersions((current) => {
           const next = { ...current }
-          items.forEach((group) => {
-            next[group.question_part_id] = (next[group.question_part_id] ?? 0) + 1
+          items.question_part_ids.forEach((id) => {
+            next[id] = (next[id] ?? 0) + 1
           })
           return next
         })
-      setGenerationMessage(
-        items.length
-          ? `Generated ${items.length} rubrics.`
-          : 'Nothing is missing. Your existing content was kept.',
-      )
+      setGenerationMessage('Rubric generation queued. You can navigate while it runs.')
       setErrorMessage(null)
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'rubric'] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
     },
     onError: (error) => {
       setGenerationMessage(null)

@@ -1,6 +1,4 @@
 from io import BytesIO
-from types import SimpleNamespace
-from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
@@ -8,6 +6,8 @@ from reportlab.pdfgen import canvas
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.test_helpers import JobExecutionMixin
 
 from .models import Assignment, QuestionPart
 
@@ -21,8 +21,9 @@ def build_pdf(text):
     return buffer.getvalue()
 
 
-class AssignmentApiTests(APITestCase):
+class AssignmentApiTests(JobExecutionMixin, APITestCase):
     def setUp(self):
+        super().setUp()
         self.user = User.objects.create_user(
             email="teacher@example.com",
             full_name="Teacher",
@@ -224,60 +225,56 @@ class AssignmentApiTests(APITestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Assignment.objects.filter(id=assignment.id).exists())
 
-    @patch("apps.assignments.views.generate_question_parts")
-    def test_generate_questions_with_mocked_llm(self, generate_question_parts_mock):
+    def test_generate_questions_with_mocked_llm(self):
         assignment = Assignment.objects.create(
             teacher=self.user,
             title="Generated Questions",
-            raw_assignment_text="1. Explain osmosis.\n2. Give an example.",
+            raw_assignment_text="Explain osmosis and give an example.",
         )
-        generate_question_parts_mock.return_value = SimpleNamespace(
-            parts=[
-                SimpleNamespace(
-                    part_type="question",
-                    source_label="1.1",
-                    text="Explain osmosis.",
-                    max_marks=5,
-                    parent_key=None,
-                ),
-                SimpleNamespace(
-                    part_type="question",
-                    source_label="1.2",
-                    text="Give an example.",
-                    max_marks=3,
-                    parent_key=None,
-                ),
+        self.ai_outputs["question_generation"] = {
+            "parts": [
+                {
+                    "part_type": "question",
+                    "source_label": "1.1",
+                    "text": "Explain osmosis.",
+                    "max_marks": 5,
+                },
+                {
+                    "part_type": "question",
+                    "source_label": "1.2",
+                    "text": "Give an example.",
+                    "max_marks": 3,
+                },
             ]
-        )
-
+        }
         response = self.client.post(
             reverse("question-generate", args=[assignment.id]),
             {"replace_existing": True},
             format="json",
         )
+        self.assertEqual(response.status_code, 202)
+        self.ai_provider.assert_not_called()
+        self.assertFalse(assignment.question_parts.exists())
+        self.drain_jobs()
+        rows = self.client.get(reverse("question-list", args=[assignment.id])).data
+        self.assertEqual([row["source_label"] for row in rows], ["1.1", "1.2"])
+        self.assertTrue(all(row["created_by_ai"] for row in rows))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(QuestionPart.objects.filter(assignment=assignment).count(), 2)
-        self.assertTrue(all(item["created_by_ai"] for item in response.data))
-        self.assertEqual(response.data[0]["source_label"], "1.1")
-        self.assertEqual(response.data[1]["source_label"], "1.2")
-
-    @patch("apps.assignments.views.generate_question_parts")
-    def test_question_generation_surfaces_llm_failures(self, generate_question_parts_mock):
+    def test_question_generation_surfaces_llm_failures(self):
         from apps.grading.services import LLMGenerationError
 
         assignment = Assignment.objects.create(
-            teacher=self.user,
-            title="Failed Generation",
-            raw_assignment_text="1. Explain osmosis.",
+            teacher=self.user, title="Failure", raw_assignment_text="Explain osmosis."
         )
-        generate_question_parts_mock.side_effect = LLMGenerationError("Malformed model output.")
-
+        self.ai_outputs["question_generation"] = LLMGenerationError("Private provider details")
         response = self.client.post(
             reverse("question-generate", args=[assignment.id]),
             {"replace_existing": True},
             format="json",
         )
-
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        job = AIJob.objects.get(id=response.data["id"])
+        self.assertEqual(job.state, "failed")
+        self.assertEqual(job.error_message, "AI request failed. Please try again.")
+        self.assertNotIn("Private", str(self.client.get(f"/api/ai/jobs/{job.id}/").data))

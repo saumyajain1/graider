@@ -135,7 +135,7 @@ export function reorderQuestions(assignmentId: string, questionIds: number[]) {
 }
 
 export function generateQuestions(assignmentId: string, replaceExisting = true) {
-  return aiAction<QuestionPart[]>(`/api/assignments/${assignmentId}/questions/generate`, {
+  return aiAction(`/api/assignments/${assignmentId}/questions/generate`, {
     replace_existing: replaceExisting,
   })
 }

@@ -27,7 +27,7 @@ def api_schema(*, response=None, code=200, request=None, ai=False, **kwargs):
                 "Idempotency-Key",
                 OpenApiTypes.STR,
                 OpenApiParameter.HEADER,
-                description="Optional unique action key. Background mode replays the same job for repeated identical requests.",
+                description="Optional unique action key. Replays the same job for repeated identical requests.",
             ),
         ]
         responses.update(
@@ -35,13 +35,9 @@ def api_schema(*, response=None, code=200, request=None, ai=False, **kwargs):
                 429: OpenApiResponse(
                     APIErrorSerializer, description="AI request rate or token quota exceeded."
                 ),
-                502: OpenApiResponse(
-                    APIErrorSerializer,
-                    description="AI generation failed; safe error message returned.",
-                ),
                 503: OpenApiResponse(
                     APIErrorSerializer,
-                    description="AI configuration or provider spending limit reached.",
+                    description="AI processing paused or background worker unavailable. Provider failures appear in job progress.",
                 ),
             }
         )

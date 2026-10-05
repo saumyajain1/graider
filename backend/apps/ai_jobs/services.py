@@ -97,8 +97,7 @@ def enqueue_job(
 ):
     """Return (job, created). An entire batch is admitted or nothing is written.
 
-    Called by AI endpoints only after worker readiness is established in the later
-    integration step. Admission neither contacts AI nor consumes a token reservation.
+    Called by AI endpoints only after worker readiness is established. Admission neither contacts AI nor consumes a token reservation.
     """
     if operation not in AIJob.Operation.values:
         raise ValidationError("Unknown AI operation.")

@@ -15,7 +15,6 @@ import {
   listRubric,
   type StudentSubmission,
 } from '../api/grading'
-import { isJobReceipt } from '../api/jobs'
 import { useAIJobs } from '../hooks/useAIJobs'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { ReplacementConfirmation } from '../components/ReplacementConfirmation'
@@ -173,16 +172,10 @@ export function AssignmentSubmissionsPage() {
         Boolean(submission && !['pending', 'failed'].includes(submission.grading_status)),
       )
     },
-    onSuccess: async (submission) => {
-      if (isJobReceipt(submission)) {
-        jobs.track(submission)
-        setErrorMessage(null)
-        setStatusMessage(`Grading queued for ${submission.student_name}.`)
-        return
-      }
+    onSuccess: (submission) => {
+      jobs.track(submission)
       setErrorMessage(null)
-      setStatusMessage(`Graded ${submission.student_name}.`)
-      await refreshAssignmentData()
+      setStatusMessage(`Grading queued for ${submission.student_name}.`)
     },
     onError: async (error) => {
       setStatusMessage(null)
@@ -194,20 +187,12 @@ export function AssignmentSubmissionsPage() {
 
   const gradeAllMutation = useMutation({
     mutationFn: () => gradeAllSubmissions(assignmentId!),
-    onSuccess: async (result) => {
-      if (isJobReceipt(result)) {
-        jobs.track(result)
-        setErrorMessage(null)
-        setStatusMessage(
-          `Queued ${result.children?.length ?? 0} students. Each complete result will appear independently.`,
-        )
-        return
-      }
+    onSuccess: (result) => {
+      jobs.track(result)
       setErrorMessage(null)
       setStatusMessage(
-        `Graded ${result.graded_count} submission${result.graded_count === 1 ? '' : 's'} with ${result.failed_count} failure${result.failed_count === 1 ? '' : 's'}.`,
+        `Queued ${result.children?.length ?? 0} students. Each complete result will appear independently.`,
       )
-      await refreshAssignmentData()
     },
     onError: async (error) => {
       setStatusMessage(null)

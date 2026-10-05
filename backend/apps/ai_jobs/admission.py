@@ -1,4 +1,4 @@
-"""Connect existing AI action URLs to durable admission during staged rollout."""
+"""Connect existing AI action URLs to durable admission without executing provider work."""
 
 from django.conf import settings
 from rest_framework.response import Response
@@ -10,7 +10,7 @@ from .services import WorkerUnavailable, enqueue_job
 
 def background_response(request, operation, assignment, *, options, submission=None):
     if not settings.GRAIDER_AI_JOBS_ENABLED:
-        return None
+        raise WorkerUnavailable("AI processing is paused for maintenance. Please try again later.")
     if not notify_worker():
         raise WorkerUnavailable()
     job, _ = enqueue_job(

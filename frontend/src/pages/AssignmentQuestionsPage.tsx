@@ -13,7 +13,6 @@ import {
   type QuestionPart,
 } from '../api/assignments'
 import { getApiErrorMessage } from '../api/errors'
-import { isJobReceipt } from '../api/jobs'
 import { useAIJobs } from '../hooks/useAIJobs'
 import { AIButton } from '../components/AIButton'
 import { QueryError } from '../components/QueryError'
@@ -291,22 +290,16 @@ export function AssignmentQuestionsPage() {
       jobs.refresh()
     },
     onMutate: () => setErrorMessage(null),
-    onSuccess: async (result) => {
-      if (isJobReceipt(result)) {
-        jobs.track(result)
-        setReplacementVersion((version) => version + 1)
-        setNewQuestion({
-          source_label: '',
-          parent_key: '',
-          text: '',
-          max_marks: '',
-          part_type: 'question',
-        })
-        return
-      }
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
+    onSuccess: (result) => {
+      jobs.track(result)
+      setReplacementVersion((version) => version + 1)
+      setNewQuestion({
+        source_label: '',
+        parent_key: '',
+        text: '',
+        max_marks: '',
+        part_type: 'question',
+      })
     },
   })
 

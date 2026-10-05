@@ -1,148 +1,54 @@
 # Graider
 
-Graider is a personal project for AI-assisted grading. Teachers create assignments, prepare reference answers and rubrics, grade submissions, and review results before exporting them.
+Graider helps teachers turn assignments into structured questions, prepare reference answers and rubrics, grade student submissions, and review the results before exporting them.
 
-[Try the live demo](https://graider-xt2w.onrender.com/login). The free server sleeps when idle, so the first visit can take a minute or longer.
+[Live demo](https://graider-xt2w.onrender.com/login) · [Docker image](https://hub.docker.com/r/saumyaj1/graider) · [Documentation](#documentation)
+
+The demo runs on a sleeping free service; the first visit can be slow. Use sample student data.
 
 ## Features
 
-- Create assignments from pasted text, TXT files, or PDFs.
-- Generate questions, reference answers, and rubrics with configurable AI models and reasoning effort.
-- Add student submissions individually or import a CSV; review scores and feedback before finalizing.
-- Keep original uploads private, restrict access to their teacher, and enforce upload and AI token limits.
-- Register or sign in with Google, connect or disconnect it safely, and manage your name and password.
+- Create assignments from text, TXT files or PDFs, with editable questions and mark allocations.
+- Generate reference answers and rubrics, or write them manually.
+- Import submissions individually, from files or through CSV.
+- Grade against the saved reference answer and every rubric criterion; review and edit criterion scores and feedback with calculated totals.
+- Run AI actions in persistent background jobs, with progress, cancellation, controlled retries and recovery after restart.
+- Publish each student's complete result independently while other students continue grading.
+- Sign in with passwords or Google, explicitly connect accounts, and manage profile and credentials.
+- Keep uploads private and enforce teacher access, upload limits and AI usage quotas.
+- Explore the automatically generated API through Swagger UI at `/api/docs/`.
 
-Built with session authentication and CSRF protection, persistent file storage, and CI covering backend tests and production-server checks. This is a demo; use sample submissions rather than real student information.
+## Engineering results
+
+- A **simulated 10-student × 10-question batch finished in 9 minutes 50 seconds** with the application limited to **0.1 CPU and 512 MiB RAM**; sampled peak memory was **337.50 MiB**.
+- Container restart preserved **100 question results, 200 criterion breakdowns and 110 successful usage records**, without repeating provider calls.
+- Process-death and connection-loss checks cover checkpoint recovery, atomic publication, concurrent workers and uncertain billing.
+- GitHub Actions verifies the repository, publishes Docker images for Intel/AMD and Apple Silicon, and triggers Render with the passing commit image.
+
+Measurements use simulated provider responses and local PostgreSQL. See [benchmarks and their limits](docs/BENCHMARKS.md).
 
 ## Tech stack
 
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS.
-- **Backend:** Django, Django REST Framework, django-allauth, Gunicorn, WhiteNoise.
-- **Data:** SQLite and local files for development; Neon PostgreSQL and private Object Storage in production.
-- **AI:** OpenAI SDK; GPT-6 Luna by default, configurable per task.
-- **Hosting:** one Docker web service on Render for the frontend and API.
+| Layer                 | Technology                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| Frontend              | React, TypeScript, Vite, Tailwind CSS                                                        |
+| Backend               | Django, Django REST Framework, Gunicorn, WhiteNoise                                          |
+| Identity and API docs | django-allauth, Google OIDC, drf-spectacular                                                 |
+| Persistence           | Neon PostgreSQL and private S3-compatible Object Storage; SQLite/local files for development |
+| AI                    | OpenAI SDK, task-specific model and reasoning configuration                                  |
+| Delivery              | Docker, Docker Hub, GitHub Actions, Render                                                   |
 
-## Architecture
+## Documentation
 
-Render serves the React app and Django API from one URL. Django stores assignments and grading results in Neon PostgreSQL, original uploads in a private Neon bucket, and calls OpenAI for AI tasks. Upload limits and per-user/global token quotas bound usage; an enforced OpenAI project spend cap limits monthly AI cost.
+| Page                                              | Contents                                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)              | System and data diagrams, component boundaries, security and design decisions                       |
+| [Grading workflow](docs/GRADING.md)               | Assignment preparation, answer mapping, criterion scoring, concurrency, recovery and teacher review |
+| [Benchmarks](docs/BENCHMARKS.md)                  | Current and historical grading timings, test conditions, recovery evidence and reproduction         |
+| [Setup and deployment](docs/SETUP.md)             | Docker quickstart, source development, environment settings, accounts, Render and maintenance       |
+| [Issues and roadmap](docs/ROADMAP.md)             | Unresolved limitations, upcoming features and proposed improvements                                 |
+| [Raw benchmark report](docs/ai-job-capacity.json) | Machine-readable capacity measurements and runtime image ID                                         |
 
-## Run locally with Docker
+These pages describe this checkout; the deployed demo and published `latest` image may lag it.
 
-Requires Docker Desktop. The published image includes the frontend and backend; no Python, Node.js, or repository checkout is needed.
-
-```bash
-mkdir graider-demo
-cd graider-demo
-curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/feat/production-deployment/compose.yaml -o compose.yaml
-curl -fsSL https://raw.githubusercontent.com/saumyajain1/graider/feat/production-deployment/.env.example -o .env
-```
-
-Set a unique `DJANGO_SECRET_KEY` in `.env`; add `OPENAI_API_KEY` for AI features, or leave it empty for manual use. Then run:
-
-```bash
-docker compose up -d
-```
-
-Open [localhost:8000](http://localhost:8000). SQLite data and uploads persist in Docker volumes. `docker compose down` stops the app; adding `--volumes` deletes that local data. To update, run `docker compose pull` followed by `docker compose up -d`.
-
-The image is hosted on [Docker Hub](https://hub.docker.com/r/saumyaj1/graider). Use `latest` for the current release or `sha-<commit>` for an exact version. CI publishes a commit tag after checks pass; the newest passing merge to `main` updates `latest`. Images support Intel/AMD and Apple Silicon.
-
-## Deploy on Render
-
-1. Use the published Docker Hub image; GitHub Actions releases new images only after all checks pass.
-2. Create a Neon PostgreSQL database and a private `uploads` bucket on the same branch in AWS US East 2 (Ohio).
-3. In Render, select **New → Web Service → Existing Image** and enter `docker.io/saumyaj1/graider:latest`. Choose **Free**, region **Ohio**, and health check path `/health/`. Leave the Docker command override empty.
-4. Add the environment values below, using **Add from .env** to paste a production-configured dotenv file if preferred, then deploy. [render.yaml](render.yaml) provides the same configuration for Blueprint setup.
-
-| Setting                                                                      | Production value                                                               |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `DJANGO_DEBUG`                                                               | `false`                                                                        |
-| `DJANGO_SECRET_KEY`                                                          | A unique random secret of at least 50 characters                               |
-| `DJANGO_ALLOWED_HOSTS`                                                       | Empty on Render (its assigned hostname is detected); list any custom hostnames |
-| `DATABASE_URL`                                                               | Neon PostgreSQL connection URL, including `sslmode=require`                    |
-| `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`          | Neon Object Storage endpoint and credentials                                   |
-| `AWS_REGION`, `NEON_STORAGE_BUCKET`                                          | `us-east-2`, `uploads`                                                         |
-| `OPENAI_API_KEY`                                                             | A dedicated OpenAI project key                                                 |
-| `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for this same-origin deployment                                          |
-
-Enter credentials in Render's environment settings. For dotenv import, use production values from the table rather than the local development defaults; quoted values are supported. Keep credential files out of Git. In OpenAI **Project settings → Limits → Spend → Edit spend limit**, set a monthly amount and enable **Enforce a hard limit**; alerts alone do not cap spending. Restrict project model access to the models configured in [.env.example](.env.example), which also lists reasoning, upload, token quota, and server overrides.
-
-The image contains the built frontend and static files. Startup applies pending migrations and runs Gunicorn; `/health/` checks availability. GitHub Actions triggers Render after publishing when its deploy hook is configured below. Use a fresh database for the initial deployment. Uploaded files persist in Neon rather than on Render's temporary filesystem.
-
-Password recovery uses Brevo’s HTTPS email API. Set `BREVO_API_KEY` and `GRAIDER_FROM_EMAIL` in Render after verifying a sender; see [account and email setup](docs/ACCOUNT_SETUP.md). Locally, reset links print to the backend terminal when no email key is set.
-
-## API documentation
-
-Open [Swagger UI](http://localhost:8000/api/docs/) to explore the API. Sign in to Graider first; **Try it out** uses your browser session and CSRF protection. The specification at `/api/schema/` is generated from the API serializers and views; CI validates it without a separately maintained OpenAPI file.
-
-## Google sign-in
-
-Google sign-in is optional; password accounts continue working without it. To enable registration, sign-in, and explicit account linking:
-
-1. In [Google Auth Platform](https://console.cloud.google.com/auth/overview), use separate projects for development and production. Configure **Branding**, an **External** audience, and only the `openid`, email, and profile scopes. Create a **Web application** OAuth client under **Clients**. In production Branding, set the homepage to `https://graider-xt2w.onrender.com/about/` and the privacy policy to `https://graider-xt2w.onrender.com/privacy/`, then select **Audience → Publish app** once those pages are deployed.
-2. Add the exact **Authorized redirect URIs** for the addresses you use:
-   - Docker: `http://localhost:8000/accounts/google/login/callback/`.
-   - Source development: `http://localhost:5173/accounts/google/login/callback/`.
-   - Production: `https://graider-xt2w.onrender.com/accounts/google/login/callback/`.
-3. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in your ignored `.env` file. Add both separately to Render's environment settings for production, then restart/redeploy. Leave both empty to disable Google login. `GRAIDER_GOOGLE_RATE` sets the login-start limit, default `10/min`.
-4. New users can select **Continue with Google** on either login tab. Existing password users sign in first, then open the profile menu → **Manage account → Connect Google**. Matching emails alone never merge accounts.
-
-Use a consistent hostname locally; `localhost` and `127.0.0.1` require separate callback entries and have separate browser cookies. Only basic identity scopes are requested. Google tokens are not stored; subsequent requests use Django sessions. Startup adds allauth's tables through migrations and preserves existing data.
-
-User administration is available at `/admin/` with an authorized staff account. Its login page accepts a password or a connected Google account and returns to the requested admin page. Google sign-in never grants admin permissions or creates an account through this page. Create an initial administrator with `python manage.py createsuperuser` inside the backend or container.
-
-## CI/CD
-
-Pull requests run lint, formatting, backend tests, frontend builds, and production/container checks. After a merge to `main`, GitHub Actions builds both image architectures, pushes `saumyaj1/graider:sha-<commit>`, updates `latest` for the newest passing merge, and triggers Render with that exact commit image. Merge builds queue instead of canceling each other.
-
-Configure **GitHub → Settings → Secrets and variables → Actions**:
-
-| Type     | Name                 | Value                                                   |
-| -------- | -------------------- | ------------------------------------------------------- |
-| Variable | `DOCKERHUB_USERNAME` | `saumyaj1`                                              |
-| Secret   | `DOCKERHUB_TOKEN`    | Docker Hub personal access token with Read/Write access |
-| Secret   | `RENDER_DEPLOY_HOOK` | Deploy Hook URL from the Render service's Settings page |
-
-Keep the Docker Hub repository public so local users and Render can pull without credentials. Docker Desktop login is local to your computer; GitHub Actions uses its own token. Until the Render hook is added, the workflow publishes images and reports that deployment setup is pending.
-
-## Develop from source
-
-For live reload and code changes, use Python 3.11 and Node.js 24:
-
-```bash
-git clone --branch feat/production-deployment https://github.com/saumyajain1/graider.git
-cd graider
-cp .env.example .env
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r backend/requirements.txt -c backend/requirements.lock
-npm ci --prefix frontend
-```
-
-Configure the two keys in `.env` as above; keep the database URL and storage credentials empty for local SQLite/files. Start the backend:
-
-```bash
-python backend/manage.py migrate
-python backend/manage.py runserver 127.0.0.1:8000
-```
-
-In another terminal, run `npm run dev --prefix frontend` and open [localhost:5173](http://localhost:5173).
-
-Install the quality tools:
-
-```bash
-python -m pip install -r backend/requirements-dev.txt
-npm ci
-```
-
-Run `npm run check` for linting and formatting checks, or `npm run format` to apply formatting. Docker must be running for the Dockerfile and workflow linters. CI also runs backend tests, frontend builds, and container startup checks.
-
-Run backend tests without connecting to cloud services:
-
-```bash
-cd backend
-DATABASE_URL= AWS_ENDPOINT_URL_S3= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= \
-  OPENAI_API_KEY= python manage.py test
-```
-
-CSV imports require `student_name` and `response_text` (or `raw_response_text`); `student_identifier` (or `student_id`) is optional.
+Start with the [Docker quickstart](docs/SETUP.md#run-locally-with-docker) to use the app, or [source development](docs/SETUP.md#develop-from-source) to change it.

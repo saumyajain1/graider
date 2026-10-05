@@ -69,6 +69,39 @@ class WorkflowAPITests(JobFixtures, TransactionTestCase):
             self.assertEqual(self.client.post(path, {}, format="json").status_code, 404)
         self.assertFalse(AIJob.objects.exists())
 
+    @override_settings(GRAIDER_AI_JOBS_ENABLED=False)
+    def test_maintenance_mode_rejects_all_ai_actions_without_sync_fallback(self):
+        assignment = f"/api/assignments/{self.assignment.id}"
+        paths = [
+            f"{assignment}/questions/generate",
+            f"{assignment}/reference-answers/generate",
+            f"{assignment}/rubric/generate",
+            f"/api/submissions/{self.submission.id}/grade",
+            f"{assignment}/grade-all",
+        ]
+        with patch("apps.grading.services.openai_client.OpenAI") as provider:
+            for path in paths:
+                response = self.client.post(path, {}, format="json")
+                self.assertEqual(response.status_code, 503, response.data)
+                self.assertIn("maintenance", str(response.data))
+                self.client.force_authenticate(self.other)
+                self.assertEqual(self.client.post(path, {}, format="json").status_code, 404)
+                self.client.force_authenticate(self.owner)
+            provider.assert_not_called()
+        self.assertFalse(AIJob.objects.exists())
+        self.assertFalse(LLMUsage.objects.exists())
+        self.assertEqual(self.client.get(assignment).status_code, 200)
+
+    def test_rubric_admission_requires_reference_before_any_job_is_written(self):
+        self.question.reference_answer.delete()
+        response = self.client.post(
+            f"/api/assignments/{self.assignment.id}/rubric/generate",
+            {"replace_existing": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(AIJob.objects.exists())
+
     def test_action_key_replays_receipt_but_changed_intent_conflicts(self):
         path = f"/api/submissions/{self.submission.id}/grade"
         first = self.client.post(path, {}, format="json", HTTP_IDEMPOTENCY_KEY="lost-response")

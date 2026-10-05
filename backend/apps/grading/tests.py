@@ -3,13 +3,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from reportlab.pdfgen import canvas
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.test_helpers import JobExecutionMixin
 from apps.assignments.models import Assignment, QuestionPart
 
 from .models import (
@@ -31,8 +32,9 @@ def build_pdf(text):
     return buffer.getvalue()
 
 
-class GradingArtifactApiTests(APITestCase):
+class GradingArtifactApiTests(JobExecutionMixin, APITestCase):
     def setUp(self):
+        super().setUp()
         self.user = User.objects.create_user(
             email="grader@example.com",
             full_name="Grader",
@@ -52,19 +54,18 @@ class GradingArtifactApiTests(APITestCase):
             display_order=0,
         )
 
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_generate_reference_answers_with_mocked_llm(self, generate_reference_answer_mock):
-        generate_reference_answer_mock.return_value.answer_text = "A strong answer defines osmosis."
-
+    def test_generate_reference_answers_with_mocked_llm(self):
+        self.ai_outputs["reference_answer"] = {"answer_text": "A strong answer defines osmosis."}
         response = self.client.post(
-            reverse("reference-answer-generate", args=[self.assignment.id]),
-            {},
-            format="json",
+            reverse("reference-answer-generate", args=[self.assignment.id]), {}, format="json"
         )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(ReferenceAnswer.objects.count(), 1)
-        self.assertEqual(response.data[0]["answer_text"], "A strong answer defines osmosis.")
+        self.assertEqual(response.status_code, 202)
+        self.assertFalse(ReferenceAnswer.objects.exists())
+        self.ai_provider.assert_not_called()
+        self.drain_jobs()
+        self.assertEqual(
+            ReferenceAnswer.objects.get().answer_text, "A strong answer defines osmosis."
+        )
 
     def test_other_teacher_cannot_read_or_change_grading_records(self):
         other_teacher = User.objects.create_user(
@@ -108,62 +109,60 @@ class GradingArtifactApiTests(APITestCase):
         self.assertEqual(other_answer.answer_text, "Private answer")
         self.assertIsNone(other_result.final_score)
 
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_reference_answer_generation_surfaces_llm_failures(
-        self, generate_reference_answer_mock
-    ):
-        from apps.grading.services import LLMGenerationError
+    def test_reference_answer_generation_surfaces_llm_failures(self):
+        from .services import LLMGenerationError
 
-        generate_reference_answer_mock.side_effect = LLMGenerationError("Malformed model output.")
-
+        self.ai_outputs["reference_answer"] = LLMGenerationError("Malformed model output.")
         response = self.client.post(
-            reverse("reference-answer-generate", args=[self.assignment.id]),
-            {},
-            format="json",
+            reverse("reference-answer-generate", args=[self.assignment.id]), {}, format="json"
         )
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        job = AIJob.objects.get(id=response.data["id"])
+        self.assertEqual(job.state, "failed")
+        self.assertEqual(job.error_message, "AI request failed. Please try again.")
 
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
-
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_quota_exhaustion_returns_friendly_429(self, generate_answer):
+    def test_quota_exhaustion_pauses_accepted_job(self):
         from .services.usage import LLMQuotaExceeded
 
-        generate_answer.side_effect = LLMQuotaExceeded("Your daily AI allowance is used up.")
+        self.ai_outputs["reference_answer"] = LLMQuotaExceeded(
+            "Your daily AI allowance is used up."
+        )
         response = self.client.post(
             reverse("reference-answer-generate", args=[self.assignment.id]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.data["detail"], "Your daily AI allowance is used up.")
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        job = AIJob.objects.get(id=response.data["id"])
+        self.assertEqual(job.state, "paused_quota")
+        self.assertIn("allowance", job.error_message)
 
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_provider_spend_limit_returns_friendly_503(self, generate_answer):
+    def test_provider_spend_limit_pauses_job_with_safe_message(self):
         from .services.openai_client import LLMSpendLimitError
 
-        generate_answer.side_effect = LLMSpendLimitError("Sensitive provider details")
+        self.ai_outputs["reference_answer"] = LLMSpendLimitError("Sensitive provider details")
         response = self.client.post(
             reverse("reference-answer-generate", args=[self.assignment.id]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("spending limit", response.data["detail"])
-        self.assertNotIn("Sensitive", response.data["detail"])
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        job = AIJob.objects.get(id=response.data["id"])
+        self.assertEqual(job.state, "paused_quota")
+        self.assertIn("spending limit", job.error_message)
+        self.assertNotIn("Sensitive", job.error_message)
 
-    @patch("apps.grading.views.generate_rubric_criteria")
-    def test_rubric_ai_call_does_not_hold_database_transaction(self, generate_rubric):
+    def test_rubric_ai_call_does_not_hold_database_transaction(self):
         ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
-        baseline_atomic_depth = len(connection.atomic_blocks)
-
-        def provider_call(*args):
-            self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
-            return SimpleNamespace(
-                criteria=[SimpleNamespace(title="Accuracy", description="Accurate", max_points=5)]
-            )
-
-        generate_rubric.side_effect = provider_call
+        self.ai_outputs["rubric_generation"] = {
+            "criteria": [{"title": "Accuracy", "description": "Accurate", "max_points": 5}]
+        }
         response = self.client.post(
             reverse("rubric-generate", args=[self.assignment.id]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.ai_provider.assert_not_called()
+        self.drain_jobs()  # The test provider asserts no additional transaction is held.
+        self.assertEqual(AIJob.objects.get().state, "succeeded")
 
     def test_manual_reference_answer_create_and_patch(self):
         create_response = self.client.post(
@@ -184,39 +183,25 @@ class GradingArtifactApiTests(APITestCase):
         self.assertEqual(patch_response.status_code, 200)
         self.assertEqual(patch_response.data["answer_text"], "Edited manual answer.")
 
-    @patch("apps.grading.views.generate_rubric_criteria")
-    def test_generate_rubric_with_mocked_llm(self, generate_rubric_mock):
-        ReferenceAnswer.objects.create(
-            question_part=self.question,
-            answer_text="Reference answer",
-            source=ReferenceAnswer.Source.TEACHER,
-        )
-        generate_rubric_mock.return_value.criteria = [
-            type(
-                "Criterion",
-                (),
+    def test_generate_rubric_with_mocked_llm(self):
+        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference answer")
+        self.ai_outputs["rubric_generation"] = {
+            "criteria": [
                 {
                     "title": "Core concept",
                     "description": "Defines osmosis correctly.",
                     "max_points": 3,
                 },
-            )(),
-            type(
-                "Criterion",
-                (),
                 {"title": "Example", "description": "Gives a sensible example.", "max_points": 2},
-            )(),
-        ]
-
+            ]
+        }
         response = self.client.post(
-            reverse("rubric-generate", args=[self.assignment.id]),
-            {},
-            format="json",
+            reverse("rubric-generate", args=[self.assignment.id]), {}, format="json"
         )
-
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
         self.assertEqual(RubricCriterion.objects.count(), 2)
-        self.assertEqual(response.data[0]["criteria"][0]["title"], "Core concept")
+        self.assertEqual(RubricCriterion.objects.first().title, "Core concept")
 
     def test_manual_rubric_create_patch_and_delete(self):
         create_response = self.client.post(
@@ -285,309 +270,167 @@ class GradingArtifactApiTests(APITestCase):
         self.assertIn("submission", submission.response_file.name)
         self.assertTrue(submission.response_file.name.endswith(".pdf"))
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_grade_submission_pipeline_with_mocked_llm(
-        self,
-        map_submission_answers_mock,
-        grade_question_part_mock,
-    ):
-        ReferenceAnswer.objects.create(
+    def prepare_grading(self, score=4):
+        ReferenceAnswer.objects.get_or_create(
+            question_part=self.question, defaults={"answer_text": "Reference answer"}
+        )
+        criterion, _ = RubricCriterion.objects.get_or_create(
             question_part=self.question,
-            answer_text="Reference answer",
-            source=ReferenceAnswer.Source.TEACHER,
+            defaults={"title": "Accuracy", "description": "Accurate", "max_points": 5},
         )
-        RubricCriterion.objects.create(
-            question_part=self.question,
-            title="Definition",
-            description="Defines osmosis correctly.",
-            max_points="5",
-            display_order=0,
-        )
-        submission = StudentSubmission.objects.create(
-            assignment=self.assignment,
-            student_name="Alice",
-            raw_response_text="Osmosis is water moving across a membrane.",
-        )
-        map_submission_answers_mock.return_value = SimpleNamespace(
-            answers=[
-                SimpleNamespace(
-                    part_key="Q1",
-                    extracted_answer_text="Osmosis is water moving across a membrane.",
-                    mapping_confidence=0.91,
-                )
+        self.ai_outputs["answer_mapping"] = {
+            "answers": [
+                {
+                    "part_key": "Q1",
+                    "extracted_answer_text": "Mapped answer",
+                    "mapping_confidence": 0.9,
+                }
             ]
-        )
-        grade_question_part_mock.return_value = SimpleNamespace(
-            criteria=[
-                SimpleNamespace(
-                    criterion_id=self.question.rubric_criteria.get().id,
-                    score=4,
-                    feedback="Correct core definition.",
-                )
+        }
+        self.ai_outputs["submission_grading"] = {
+            "criteria": [
+                {
+                    "criterion_id": criterion.id,
+                    "score": score,
+                    "feedback": "Correct core definition.",
+                }
             ],
-            feedback="Strong definition with room for a clearer example.",
-            reasoning_summary="Correct core idea but missing some specificity.",
-            confidence_score=0.88,
-            needs_review=False,
+            "feedback": "Good",
+            "reasoning_summary": "Matches reference",
+            "confidence_score": 0.9,
+            "needs_review": False,
+        }
+        return StudentSubmission.objects.create(
+            assignment=self.assignment, student_name="Alice", raw_response_text="Answer"
         )
 
+    def test_grade_submission_job_with_mocked_llm(self):
+        submission = self.prepare_grading()
         response = self.client.post(
             reverse("submission-grade", args=[submission.id]), {}, format="json"
         )
-
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.ai_provider.assert_not_called()
+        self.drain_jobs()
         submission.refresh_from_db()
-        self.assertEqual(submission.grading_status, StudentSubmission.GradingStatus.GRADED)
+        self.assertEqual(submission.grading_status, "graded")
         self.assertEqual(str(submission.total_score), "4.00")
         self.assertEqual(SubmissionAnswerPart.objects.count(), 1)
         self.assertEqual(GradingResult.objects.count(), 1)
 
-    @patch("apps.grading.services.submission_workflow.logger")
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_grading_failure_does_not_expose_provider_details(self, map_answers, _logger):
+    def test_grading_failure_does_not_expose_provider_details(self):
         from .services import LLMGenerationError
 
-        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
-        RubricCriterion.objects.create(
-            question_part=self.question,
-            title="Accuracy",
-            description="Accurate",
-            max_points="5",
+        submission = self.prepare_grading()
+        self.ai_outputs["answer_mapping"] = LLMGenerationError(
+            "provider request id and private details"
         )
-        submission = StudentSubmission.objects.create(
-            assignment=self.assignment, student_name="Alice", raw_response_text="Answer"
-        )
-        map_answers.side_effect = LLMGenerationError("provider request id and private details")
-
         response = self.client.post(
             reverse("submission-grade", args=[submission.id]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.data["detail"], "AI request failed. Please try again.")
-        submission.refresh_from_db()
-        self.assertEqual(submission.last_error, "AI request failed. Please try again.")
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        job = AIJob.objects.get(id=response.data["id"])
+        self.assertEqual(job.state, "failed")
+        self.assertEqual(job.error_message, "AI request failed. Please try again.")
+        self.assertNotIn("private details", str(self.client.get(f"/api/ai/jobs/{job.id}/").data))
         self.assertNotIn(
             "private details",
             str(self.client.get(reverse("submission-detail", args=[submission.id])).data),
         )
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_grade_all_returns_summary(
-        self,
-        map_submission_answers_mock,
-        grade_question_part_mock,
-    ):
-        ReferenceAnswer.objects.create(
-            question_part=self.question,
-            answer_text="Reference answer",
-            source=ReferenceAnswer.Source.TEACHER,
-        )
-        RubricCriterion.objects.create(
-            question_part=self.question,
-            title="Definition",
-            description="Defines osmosis correctly.",
-            max_points="5",
-            display_order=0,
-        )
+    def test_grade_all_returns_receipt_and_publishes_students(self):
+        self.prepare_grading(score=3)
         StudentSubmission.objects.create(
-            assignment=self.assignment,
-            student_name="Alice",
-            raw_response_text="Answer one",
+            assignment=self.assignment, student_name="Bob", raw_response_text="Answer two"
         )
-        StudentSubmission.objects.create(
-            assignment=self.assignment,
-            student_name="Bob",
-            raw_response_text="Answer two",
-        )
-        map_submission_answers_mock.return_value = SimpleNamespace(
-            answers=[
-                SimpleNamespace(
-                    part_key="Q1",
-                    extracted_answer_text="Mapped answer.",
-                    mapping_confidence=0.75,
-                )
-            ]
-        )
-        grade_question_part_mock.return_value = SimpleNamespace(
-            criteria=[
-                SimpleNamespace(
-                    criterion_id=self.question.rubric_criteria.get().id,
-                    score=3,
-                    feedback="Covers the main point.",
-                )
-            ],
-            feedback="Adequate response.",
-            reasoning_summary="Covers the main point.",
-            confidence_score=0.8,
-            needs_review=False,
-        )
-
         response = self.client.post(
-            reverse("assignment-grade-all", args=[self.assignment.id]),
-            {},
-            format="json",
+            reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(len(response.data["children"]), 2)
+        self.ai_provider.assert_not_called()
+        self.drain_jobs()
+        self.assertEqual(AIJob.objects.get(id=response.data["id"]).state, "succeeded")
+        self.assertEqual(
+            StudentSubmission.objects.filter(grading_status="graded", total_score=3).count(), 2
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["graded_count"], 2)
-        self.assertEqual(response.data["failed_count"], 0)
-
-    @override_settings(GRAIDER_MAX_GRADE_ALL_SUBMISSIONS=1)
-    @patch("apps.grading.views.run_grading_pipeline")
-    def test_grade_all_rejects_too_many_submissions_before_ai_calls(self, grade_pipeline):
-        for student in ("Alice", "Bob"):
-            StudentSubmission.objects.create(assignment=self.assignment, student_name=student)
+    @override_settings(GRAIDER_AI_MAX_BATCH_SUBMISSIONS=1)
+    def test_grade_all_rejects_too_many_submissions_before_ai_calls(self):
+        self.prepare_grading()
+        StudentSubmission.objects.create(
+            assignment=self.assignment, student_name="Bob", raw_response_text="Answer"
+        )
         response = self.client.post(
             reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
         )
         self.assertEqual(response.status_code, 400)
-        grade_pipeline.assert_not_called()
+        self.assertFalse(AIJob.objects.exists())
+        self.ai_provider.assert_not_called()
 
-    @override_settings(GRAIDER_MAX_GRADE_ALL_QUESTIONS=1)
-    @patch("apps.grading.views.run_grading_pipeline")
-    def test_grade_all_rejects_too_many_questions_before_ai_calls(self, grade_pipeline):
+    @override_settings(GRAIDER_AI_MAX_GRADING_QUESTIONS=1)
+    def test_grade_all_rejects_too_many_questions_before_ai_calls(self):
+        self.prepare_grading()
         QuestionPart.objects.create(
-            assignment=self.assignment, part_key="Q2", text="Second question", display_order=1
+            assignment=self.assignment, part_key="Q2", text="Second question", max_marks=1
         )
-        StudentSubmission.objects.create(assignment=self.assignment, student_name="Alice")
         response = self.client.post(
             reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
         )
         self.assertEqual(response.status_code, 400)
-        grade_pipeline.assert_not_called()
+        self.assertFalse(AIJob.objects.exists())
+        self.ai_provider.assert_not_called()
 
-    @patch("apps.grading.views.run_grading_pipeline")
-    def test_grade_all_stops_on_provider_spend_limit(self, grade_pipeline):
+    def test_grade_all_pauses_on_provider_spend_limit(self):
         from .services.openai_client import LLMSpendLimitError
 
-        StudentSubmission.objects.create(assignment=self.assignment, student_name="Alice")
-        grade_pipeline.side_effect = LLMSpendLimitError("Sensitive provider details")
+        self.prepare_grading()
+        self.ai_outputs["answer_mapping"] = LLMSpendLimitError("Sensitive provider details")
         response = self.client.post(
             reverse("assignment-grade-all", args=[self.assignment.id]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 503)
-        self.assertNotIn("Sensitive", response.data["detail"])
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        job = AIJob.objects.get(id=response.data["id"])
+        self.assertEqual(job.state, "paused_quota")
+        self.assertNotIn("Sensitive", str(self.client.get(f"/api/ai/jobs/{job.id}/").data))
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_repeat_grading_reuses_recent_result_without_duplicate_ai_spend(
-        self, map_answers, grade_question
-    ):
-        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
-        RubricCriterion.objects.create(
-            question_part=self.question, title="Accuracy", description="Accurate", max_points="5"
-        )
-        submission = StudentSubmission.objects.create(
-            assignment=self.assignment, student_name="Alice", raw_response_text="Answer"
-        )
-        baseline_atomic_depth = len(connection.atomic_blocks)
-
-        def mapping(*args):
-            self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
-            return SimpleNamespace(
-                answers=[
-                    SimpleNamespace(
-                        part_key="Q1", extracted_answer_text="Answer", mapping_confidence=0.9
-                    )
-                ]
-            )
-
-        def grading(*args):
-            self.assertEqual(len(connection.atomic_blocks), baseline_atomic_depth)
-            return SimpleNamespace(
-                criteria=[
-                    SimpleNamespace(
-                        criterion_id=self.question.rubric_criteria.get().id,
-                        score=4,
-                        feedback="Correct core definition.",
-                    )
-                ],
-                feedback="Good",
-                reasoning_summary="Good",
-                confidence_score=0.9,
-                needs_review=False,
-            )
-
-        map_answers.side_effect = mapping
-        grade_question.side_effect = grading
+    def test_repeat_grading_replays_action_key_without_duplicate_ai_work(self):
+        submission = self.prepare_grading()
         route = reverse("submission-grade", args=[submission.id])
-        self.assertEqual(self.client.post(route, {}, format="json").status_code, 200)
-        self.assertEqual(self.client.post(route, {}, format="json").status_code, 200)
-        self.assertEqual(map_answers.call_count, 1)
-        self.assertEqual(grade_question.call_count, 1)
+        first = self.client.post(route, {}, format="json", HTTP_IDEMPOTENCY_KEY="repeat")
+        self.assertEqual(first.status_code, 202)
+        self.drain_jobs()
+        repeated = self.client.post(route, {}, format="json", HTTP_IDEMPOTENCY_KEY="repeat")
+        self.assertEqual(repeated.status_code, 202)
+        self.assertEqual(first.data["id"], repeated.data["id"])
+        self.drain_jobs()
+        self.assertEqual(self.ai_provider.call_count, 2)
+        self.assertEqual(self.client.post(route, {}, format="json").status_code, 409)
 
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_in_progress_grading_rejects_second_request(self, map_answers):
-        ReferenceAnswer.objects.create(question_part=self.question, answer_text="Reference")
-        RubricCriterion.objects.create(
-            question_part=self.question, title="Accuracy", description="Accurate", max_points="5"
-        )
-        submission = StudentSubmission.objects.create(
-            assignment=self.assignment,
-            student_name="Alice",
-            raw_response_text="Answer",
-            grading_status=StudentSubmission.GradingStatus.GRADING,
-        )
+    def test_in_progress_grading_rejects_second_request(self):
+        submission = self.prepare_grading()
+        submission.grading_status = "grading"
+        submission.save()
         response = self.client.post(
             reverse("submission-grade", args=[submission.id]), {}, format="json"
         )
         self.assertEqual(response.status_code, 409)
-        map_answers.assert_not_called()
+        self.ai_provider.assert_not_called()
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
-    def test_submission_grading_endpoint_returns_nested_payload(
-        self,
-        map_submission_answers_mock,
-        grade_question_part_mock,
-    ):
-        ReferenceAnswer.objects.create(
-            question_part=self.question,
-            answer_text="Reference answer",
-            source=ReferenceAnswer.Source.TEACHER,
+    def test_submission_grading_endpoint_returns_nested_payload(self):
+        submission = self.prepare_grading()
+        self.assertEqual(
+            self.client.post(
+                reverse("submission-grade", args=[submission.id]), {}, format="json"
+            ).status_code,
+            202,
         )
-        RubricCriterion.objects.create(
-            question_part=self.question,
-            title="Definition",
-            description="Defines osmosis correctly.",
-            max_points="5",
-            display_order=0,
-        )
-        submission = StudentSubmission.objects.create(
-            assignment=self.assignment,
-            student_name="Casey",
-            raw_response_text="Osmosis is water crossing a membrane.",
-        )
-        map_submission_answers_mock.return_value = SimpleNamespace(
-            answers=[
-                SimpleNamespace(
-                    part_key="Q1",
-                    extracted_answer_text="Osmosis is water crossing a membrane.",
-                    mapping_confidence=0.9,
-                )
-            ]
-        )
-        grade_question_part_mock.return_value = SimpleNamespace(
-            criteria=[
-                SimpleNamespace(
-                    criterion_id=self.question.rubric_criteria.get().id,
-                    score=4,
-                    feedback="Correct core definition.",
-                )
-            ],
-            feedback="Strong answer.",
-            reasoning_summary="Covers the key idea.",
-            confidence_score=0.86,
-            needs_review=False,
-        )
-
-        self.client.post(reverse("submission-grade", args=[submission.id]), {}, format="json")
+        self.drain_jobs()
         response = self.client.get(reverse("submission-grading", args=[submission.id]))
-
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["submission"]["student_name"], "Casey")
+        self.assertEqual(response.data["submission"]["student_name"], "Alice")
         self.assertEqual(len(response.data["answer_parts"]), 1)
         self.assertEqual(len(response.data["grading_results"]), 1)
 

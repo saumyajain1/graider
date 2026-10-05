@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -34,7 +32,6 @@ from .models import (
 )
 from .serializers import (
     ArtifactGenerationSerializer,
-    GradeAllResultSerializer,
     GradingResultReviewSerializer,
     GradingResultSerializer,
     ReferenceAnswerCreateSerializer,
@@ -54,14 +51,6 @@ from .serializers import (
     build_reference_answer_item,
     build_rubric_question_item,
 )
-from .services import (
-    LLMConfigurationError,
-    LLMGenerationError,
-    generate_reference_answer,
-    generate_rubric_criteria,
-    validate_generated_rubric,
-)
-from .services.openai_client import LLMSpendLimitError, public_llm_error
 from .services.submission_io import (
     CsvImportError,
     build_assignment_results_csv_response,
@@ -72,10 +61,8 @@ from .services.submission_workflow import (
     SubmissionNotReadyError,
     finalize_submission,
     question_queryset_for_assignment,
-    run_grading_pipeline,
     save_grading_review,
 )
-from .services.usage import LLMQuotaExceeded
 
 
 def normalize_rubric_order(question_part):
@@ -152,16 +139,6 @@ class TeacherScopedArtifactView(APIView):
             submission__assignment__teacher=self.request.user,
         )
 
-    def handle_llm_error(self, exc):
-        if isinstance(exc, (LLMConfigurationError, LLMSpendLimitError)):
-            return Response(
-                {"detail": public_llm_error(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-        return Response({"detail": public_llm_error(exc)}, status=status.HTTP_502_BAD_GATEWAY)
-
-    def handle_quota_error(self, exc):
-        return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-
 
 @extend_schema_view(
     get=api_schema(response=ReferenceAnswerItemSerializer(many=True)),
@@ -209,7 +186,8 @@ class ReferenceAnswerListCreateView(TeacherScopedArtifactView):
 @extend_schema_view(
     post=api_schema(
         request=ArtifactGenerationSerializer,
-        response={200: ReferenceAnswerItemSerializer(many=True), 202: JobDetailSerializer},
+        response=JobDetailSerializer,
+        code=202,
         ai=True,
         errors={409: APIErrorSerializer},
     ),
@@ -219,63 +197,9 @@ class ReferenceAnswerGenerateView(TeacherScopedArtifactView):
         assignment = self.get_assignment(assignment_id)
         serializer = ArtifactGenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        replace_existing = serializer.validated_data["replace_existing"]
-        target_question_id = serializer.validated_data.get("question_part_id")
-        questions = question_queryset_for_assignment(assignment)
-        if target_question_id is not None:
-            questions = questions.filter(id=target_question_id)
-
-        if not replace_existing:
-            questions = questions.exclude(reference_answer__answer_text__regex=r"\S")
-
-        if not questions.exists():
-            if (
-                target_question_id is None
-                or assignment.question_parts.filter(
-                    id=target_question_id, part_type="question"
-                ).exists()
-            ):
-                return Response([])
-            return Response(
-                {"detail": "No target question parts were found for reference answer generation."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        receipt = background_response(
+        return background_response(
             request, AIJob.Operation.REFERENCES, assignment, options=serializer.validated_data
         )
-        if receipt is not None:
-            return receipt
-
-        prepared = []
-        try:
-            for question_part in questions:
-                prepared.append(
-                    (question_part, generate_reference_answer(assignment, question_part))
-                )
-        except LLMQuotaExceeded as exc:
-            return self.handle_quota_error(exc)
-        except (LLMConfigurationError, LLMGenerationError) as exc:
-            return self.handle_llm_error(exc)
-
-        items = []
-        with transaction.atomic():
-            for question_part, parsed in prepared:
-                reference_answer, created = ReferenceAnswer.objects.get_or_create(
-                    question_part=question_part,
-                    defaults={
-                        "answer_text": parsed.answer_text,
-                        "source": ReferenceAnswer.Source.AI,
-                    },
-                )
-                if not created and (replace_existing or not reference_answer.answer_text.strip()):
-                    reference_answer.answer_text = parsed.answer_text
-                    reference_answer.source = ReferenceAnswer.Source.AI
-                    reference_answer.version += 1
-                    reference_answer.save()
-                items.append(build_reference_answer_item(question_part))
-
-        return Response(ReferenceAnswerItemSerializer(items, many=True).data)
 
 
 @extend_schema_view(
@@ -342,7 +266,8 @@ class RubricListCreateView(TeacherScopedArtifactView):
 @extend_schema_view(
     post=api_schema(
         request=ArtifactGenerationSerializer,
-        response={200: RubricQuestionSerializer(many=True), 202: JobDetailSerializer},
+        response=JobDetailSerializer,
+        code=202,
         ai=True,
         errors={409: APIErrorSerializer},
     ),
@@ -352,86 +277,9 @@ class RubricGenerateView(TeacherScopedArtifactView):
         assignment = self.get_assignment(assignment_id)
         serializer = ArtifactGenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        replace_existing = serializer.validated_data["replace_existing"]
-        target_question_id = serializer.validated_data.get("question_part_id")
-        questions = question_queryset_for_assignment(assignment).select_related("reference_answer")
-        if target_question_id is not None:
-            questions = questions.filter(id=target_question_id)
-
-        if not replace_existing:
-            questions = questions.filter(rubric_criteria__isnull=True)
-
-        questions = list(questions)
-        if not questions:
-            if (
-                target_question_id is None
-                or assignment.question_parts.filter(
-                    id=target_question_id, part_type="question"
-                ).exists()
-            ):
-                return Response([])
-            return Response(
-                {"detail": "No target question parts were found for rubric generation."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        references = []
-        for question_part in questions:
-            if question_part.max_marks is None or question_part.max_marks <= 0:
-                return Response(
-                    {
-                        "detail": f"Set positive total marks for {question_part.display_label} before generating a rubric."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            try:
-                if not question_part.reference_answer.answer_text.strip():
-                    raise ReferenceAnswer.DoesNotExist
-                references.append((question_part, question_part.reference_answer))
-            except ReferenceAnswer.DoesNotExist:
-                return Response(
-                    {
-                        "detail": "Generate or create a reference answer before generating rubric criteria."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        receipt = background_response(
+        return background_response(
             request, AIJob.Operation.RUBRIC, assignment, options=serializer.validated_data
         )
-        if receipt is not None:
-            return receipt
-
-        prepared = []
-        try:
-            for question_part, reference_answer in references:
-                parsed = generate_rubric_criteria(question_part, reference_answer.answer_text)
-                validate_generated_rubric(question_part, parsed)
-                prepared.append((question_part, parsed))
-        except LLMQuotaExceeded as exc:
-            return self.handle_quota_error(exc)
-        except (LLMConfigurationError, LLMGenerationError) as exc:
-            return self.handle_llm_error(exc)
-
-        generated_questions = []
-        with transaction.atomic():
-            for question_part, parsed in prepared:
-                # A teacher may have added criteria while the provider was responding.
-                if not replace_existing and question_part.rubric_criteria.exists():
-                    continue
-                question_part.rubric_criteria.all().delete()
-                for index, criterion in enumerate(parsed.criteria):
-                    RubricCriterion.objects.create(
-                        question_part=question_part,
-                        title=criterion.title,
-                        description=criterion.description,
-                        max_points=Decimal(str(criterion.max_points)),
-                        display_order=index,
-                        created_by_ai=True,
-                    )
-                generated_questions.append(build_rubric_question_item(question_part))
-
-        return Response(RubricQuestionSerializer(generated_questions, many=True).data)
 
 
 @extend_schema_view(
@@ -608,7 +456,8 @@ class SubmissionResponseFileView(TeacherScopedArtifactView):
 @extend_schema_view(
     post=api_schema(
         request=GradingJobRequestSerializer,
-        response={200: StudentSubmissionSerializer, 202: JobDetailSerializer},
+        response=JobDetailSerializer,
+        code=202,
         ai=True,
         errors={409: APIErrorSerializer},
     ),
@@ -618,33 +467,20 @@ class SubmissionGradeView(TeacherScopedArtifactView):
         submission = self.get_submission(submission_id)
         serializer = GradingJobRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        receipt = background_response(
+        return background_response(
             request,
             AIJob.Operation.GRADE,
             submission.assignment,
             options=serializer.validated_data,
             submission=submission,
         )
-        if receipt is not None:
-            return receipt
-        try:
-            submission = run_grading_pipeline(submission)
-        except SubmissionNotReadyError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except SubmissionGradingInProgressError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
-        except LLMQuotaExceeded as exc:
-            return self.handle_quota_error(exc)
-        except (LLMConfigurationError, LLMGenerationError) as exc:
-            return self.handle_llm_error(exc)
-
-        return Response(StudentSubmissionSerializer(submission).data)
 
 
 @extend_schema_view(
     post=api_schema(
         request=GradingJobRequestSerializer,
-        response={200: GradeAllResultSerializer, 202: JobDetailSerializer},
+        response=JobDetailSerializer,
+        code=202,
         ai=True,
         errors={409: APIErrorSerializer},
     ),
@@ -654,60 +490,8 @@ class AssignmentGradeAllView(TeacherScopedArtifactView):
         assignment = self.get_assignment(assignment_id)
         serializer = GradingJobRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        receipt = background_response(
+        return background_response(
             request, AIJob.Operation.BATCH, assignment, options=serializer.validated_data
-        )
-        if receipt is not None:
-            return receipt
-        submissions = list(assignment.submissions.all())
-        if not submissions:
-            return Response(
-                {"detail": "No submissions are available to grade."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if len(submissions) > settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS:
-            return Response(
-                {
-                    "detail": f"Grade at most {settings.GRAIDER_MAX_GRADE_ALL_SUBMISSIONS} submissions at once."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if (
-            question_queryset_for_assignment(assignment).count()
-            > settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS
-        ):
-            return Response(
-                {
-                    "detail": f"Grade-all supports at most {settings.GRAIDER_MAX_GRADE_ALL_QUESTIONS} questions."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        graded = 0
-        failed = 0
-        for submission in submissions:
-            try:
-                run_grading_pipeline(submission)
-                graded += 1
-            except SubmissionNotReadyError as exc:
-                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-            except SubmissionGradingInProgressError as exc:
-                return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
-            except LLMQuotaExceeded as exc:
-                return self.handle_quota_error(exc)
-            except (LLMConfigurationError, LLMSpendLimitError) as exc:
-                return self.handle_llm_error(exc)
-            except LLMGenerationError:
-                failed += 1
-
-        return Response(
-            GradeAllResultSerializer(
-                {
-                    "graded_count": graded,
-                    "failed_count": failed,
-                    "submissions": assignment.submissions.all(),
-                }
-            ).data
         )
 
 

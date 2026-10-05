@@ -195,6 +195,12 @@ def execution_plan(snapshot):
         for p in questions
     ):
         raise ValidationError("Set question text and positive total marks before generating.")
+    if operation == AIJob.Operation.RUBRIC and any(
+        not p["reference"] or not p["reference"]["text"].strip() for p in questions
+    ):
+        raise ValidationError(
+            "Generate or create a reference answer before generating rubric criteria."
+        )
     return [f"{operation}:{p['id']}" for p in questions], [
         f"{operation}:{p['id']}" for p in questions
     ]

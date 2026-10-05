@@ -119,12 +119,6 @@ export type SubmissionGrading = {
   reference_answers: ReferenceAnswerItem[]
 }
 
-export type GradeAllResponse = {
-  graded_count: number
-  failed_count: number
-  submissions: StudentSubmission[]
-}
-
 export function listReferenceAnswers(assignmentId: string) {
   return apiRequest<ReferenceAnswerItem[]>(`/api/assignments/${assignmentId}/reference-answers`)
 }
@@ -153,10 +147,7 @@ export function generateReferenceAnswers(
   assignmentId: string,
   payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
-  return aiAction<ReferenceAnswerItem[]>(
-    `/api/assignments/${assignmentId}/reference-answers/generate`,
-    payload ?? {},
-  )
+  return aiAction(`/api/assignments/${assignmentId}/reference-answers/generate`, payload ?? {})
 }
 
 export function listRubric(assignmentId: string) {
@@ -198,10 +189,7 @@ export function generateRubric(
   assignmentId: string,
   payload?: { question_part_id?: number; replace_existing?: boolean },
 ) {
-  return aiAction<RubricQuestion[]>(
-    `/api/assignments/${assignmentId}/rubric/generate`,
-    payload ?? {},
-  )
+  return aiAction(`/api/assignments/${assignmentId}/rubric/generate`, payload ?? {})
 }
 
 export function listSubmissions(assignmentId: string) {
@@ -253,11 +241,11 @@ export function getSubmission(submissionId: number) {
 }
 
 export function gradeSubmission(submissionId: number, regrade = false) {
-  return aiAction<StudentSubmission>(`/api/submissions/${submissionId}/grade`, { regrade })
+  return aiAction(`/api/submissions/${submissionId}/grade`, { regrade })
 }
 
 export function gradeAllSubmissions(assignmentId: string, regrade = false) {
-  return aiAction<GradeAllResponse>(`/api/assignments/${assignmentId}/grade-all`, { regrade })
+  return aiAction(`/api/assignments/${assignmentId}/grade-all`, { regrade })
 }
 
 export async function getSubmissionGrading(submissionId: number) {

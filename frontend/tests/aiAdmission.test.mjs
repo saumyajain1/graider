@@ -19,6 +19,14 @@ globalThis.sessionStorage = {
 }
 globalThis.document = { cookie: 'csrftoken=test-csrf' }
 globalThis.window = { location: { origin: 'http://localhost' }, setTimeout, clearTimeout }
+const receipt = {
+  id: 'accepted',
+  operation: 'questions',
+  state: 'queued',
+  completed_steps: 0,
+  total_steps: 1,
+  question_part_ids: [],
+}
 const response = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -30,7 +38,7 @@ test('lost response retries preserve the action key across navigation and reload
     keys.push(options.headers.get('Idempotency-Key'))
     assert.equal(options.headers.get('X-CSRFToken'), 'test-csrf')
     if (++count === 1) throw new TypeError('Lost response')
-    return response({ id: 'accepted' })
+    return response(receipt, 202)
   }
   await assert.rejects(aiAction('/action', { regrade: false }))
   // Reload creates a fresh module; the session-stored key must still replay admission.
@@ -62,7 +70,8 @@ test('server errors preserve an uncertain admission key; explicit rejection rele
   const statuses = [500, 409, 200]
   globalThis.fetch = async (_, options) => {
     keys.push(options.headers.get('Idempotency-Key'))
-    return response({ detail: 'test' }, statuses.shift())
+    const status = statuses.shift()
+    return response(status >= 400 ? { detail: 'test' } : receipt, status)
   }
   await assert.rejects(aiAction('/uncertain', {}))
   await assert.rejects(aiAction('/uncertain', {}))
@@ -107,4 +116,17 @@ test('discovers active jobs beyond the recent page and expands child progress', 
   )
   assert.equal(jobs[2].children[0].state, 'succeeded')
   assert.ok(seen.includes('/api/ai/jobs/?active_only=true&page=2'))
+})
+
+test('an unexpected AI response preserves the key for checking admission on retry', async () => {
+  setAIActionOwner(30)
+  const keys = []
+  let count = 0
+  globalThis.fetch = async (_, options) => {
+    keys.push(options.headers.get('Idempotency-Key'))
+    return response(++count === 1 ? { submissions: [] } : receipt, 202)
+  }
+  await assert.rejects(aiAction('/invalid-receipt', {}), /Could not confirm the AI job/)
+  await aiAction('/invalid-receipt', {})
+  assert.equal(keys[0], keys[1])
 })

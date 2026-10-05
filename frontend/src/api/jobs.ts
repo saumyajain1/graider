@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from './client'
-export { isJobReceipt } from '../lib/aiJobs'
+import { isJobReceipt } from '../lib/aiJobs'
 
 export type JobState =
   | 'queued'
@@ -80,7 +80,7 @@ export function setAIActionOwner(owner: number) {
   actionOwner = owner
 }
 
-export async function aiAction<T>(path: string, payload: unknown) {
+export async function aiAction(path: string, payload: unknown) {
   const intent = `graider-ai-request:${actionOwner}:${path}:${JSON.stringify(payload)}`
   let key = pendingKeys.get(intent)
   try {
@@ -104,11 +104,18 @@ export async function aiAction<T>(path: string, payload: unknown) {
     }
   }
   try {
-    const result = await apiRequest<T | AIJob>(path, {
+    const result = await apiRequest<unknown>(path, {
       method: 'POST',
       body: JSON.stringify(payload),
       headers: { 'Idempotency-Key': key },
     })
+    if (!isJobReceipt(result)) {
+      throw new ApiError(
+        'Could not confirm the AI job. Retry to check whether it was accepted.',
+        502,
+        null,
+      )
+    }
     clear()
     return result
   } catch (error) {

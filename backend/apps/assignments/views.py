@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -12,13 +10,6 @@ from rest_framework.views import APIView
 from apps.ai_jobs.admission import background_response
 from apps.ai_jobs.models import AIJob
 from apps.ai_jobs.serializers import JobDetailSerializer
-from apps.grading.services import (
-    LLMConfigurationError,
-    LLMGenerationError,
-    generate_question_parts,
-)
-from apps.grading.services.openai_client import LLMSpendLimitError, public_llm_error
-from apps.grading.services.usage import LLMQuotaExceeded
 from apps.uploads import delete_upload_after_commit, private_file_response
 from config.schema import api_schema
 
@@ -30,7 +21,6 @@ from .serializers import (
     QuestionReorderSerializer,
     SourcePreviewResponseSerializer,
     SourcePreviewSerializer,
-    build_part_key,
 )
 
 
@@ -161,7 +151,8 @@ class QuestionListCreateView(TeacherScopedView):
 @extend_schema_view(
     post=api_schema(
         request=QuestionGenerateSerializer,
-        response={200: QuestionPartSerializer(many=True), 202: JobDetailSerializer},
+        response=JobDetailSerializer,
+        code=202,
         ai=True,
         errors={409: OpenApiTypes.OBJECT},
     ),
@@ -173,67 +164,9 @@ class QuestionGenerateView(TeacherScopedView):
         assignment = self.get_assignment(assignment_id)
         serializer = QuestionGenerateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        replace_existing = serializer.validated_data["replace_existing"]
-        receipt = background_response(
+        return background_response(
             request, AIJob.Operation.QUESTIONS, assignment, options=serializer.validated_data
         )
-        if receipt is not None:
-            return receipt
-
-        if not assignment.raw_assignment_text.strip():
-            return Response(
-                {
-                    "detail": "Assignment text is empty. Add or upload text before generating questions."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            parsed = generate_question_parts(assignment)
-        except LLMQuotaExceeded as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-        except LLMConfigurationError as exc:
-            return Response(
-                {"detail": public_llm_error(exc)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except LLMSpendLimitError as exc:
-            return Response(
-                {"detail": public_llm_error(exc)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except LLMGenerationError as exc:
-            return Response(
-                {"detail": public_llm_error(exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        with transaction.atomic():
-            if replace_existing:
-                assignment.question_parts.all().delete()
-
-            starting_order = assignment.question_parts.count()
-            created_questions = []
-            for index, part in enumerate(parsed.parts):
-                part_key = build_part_key(assignment)
-                created_questions.append(
-                    QuestionPart.objects.create(
-                        assignment=assignment,
-                        part_key=part_key,
-                        source_label=(getattr(part, "source_label", None) or part_key).strip(),
-                        parent_key=getattr(part, "parent_key", None) or "",
-                        part_type=part.part_type,
-                        text=part.text,
-                        max_marks=Decimal(str(part.max_marks))
-                        if part.max_marks is not None
-                        else None,
-                        display_order=starting_order + index,
-                        created_by_ai=True,
-                    )
-                )
-
-        serializer = QuestionPartSerializer(created_questions, many=True)
-        return Response(serializer.data)
 
 
 @extend_schema_view(

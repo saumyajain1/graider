@@ -69,13 +69,13 @@ class GeneratedSchemaTests(SimpleTestCase):
         self.assertFalse(operation["requestBody"].get("required", False))
         self.assertEqual(
             set(operation["responses"]),
-            {"200", "202", "400", "403", "404", "409", "429", "502", "503"},
+            {"202", "400", "403", "404", "409", "429", "503"},
         )
-        response = operation["responses"]["200"]["content"]["application/json"]["schema"]
+        response = operation["responses"]["202"]["content"]["application/json"]["schema"]
         component = self.schema["components"]["schemas"][response["$ref"].rsplit("/", 1)[-1]]
-        self.assertEqual(
-            set(component["properties"]), {"graded_count", "failed_count", "submissions"}
-        )
+        self.assertIn("children", component["properties"])
+        self.assertIn("state", component["properties"])
+        self.assertNotIn("input_snapshot", component["properties"])
         download = paths["/api/assignments/{assignment_id}/export.csv"]["get"]
         self.assertEqual(
             download["responses"]["200"]["content"]["text/csv"]["schema"]["format"], "binary"

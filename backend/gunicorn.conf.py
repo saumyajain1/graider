@@ -20,7 +20,7 @@ bind = f"0.0.0.0:{positive_int('PORT', 10000)}"
 workers = positive_int("GUNICORN_WORKERS", 1)
 worker_class = "gthread"
 threads = positive_int("GUNICORN_THREADS", 4)
-# With gthread, this watches worker liveness, not the duration of a grading request.
+# With gthread, this watches worker liveness, not the duration of a background AI job.
 timeout = positive_int("GUNICORN_TIMEOUT_SECONDS", 120)
 graceful_timeout = positive_int("GUNICORN_GRACEFUL_TIMEOUT_SECONDS", 120)
 accesslog = "-"
