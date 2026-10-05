@@ -434,9 +434,3 @@ class ArtifactGenerationSerializer(TargetQuestionSerializer):
 
 class SubmissionCsvUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
-
-
-class GradeAllResultSerializer(serializers.Serializer):
-    graded_count = serializers.IntegerField()
-    failed_count = serializers.IntegerField()
-    submissions = StudentSubmissionSerializer(many=True)

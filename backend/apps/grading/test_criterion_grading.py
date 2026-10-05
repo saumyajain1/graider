@@ -1,25 +1,29 @@
 import csv
 import io
-from datetime import timedelta
+from contextlib import nullcontext
 from decimal import Decimal
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.urls import reverse
-from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.test_helpers import JobExecutionMixin
 from apps.assignments.models import Assignment, QuestionPart
 
 from .models import GradingResult, ReferenceAnswer, RubricCriterion, StudentSubmission
 from .services.grading_pipeline import grade_question_part
 from .services.schemas import GeneratedCriterionGradeSchema, GeneratedQuestionGradeSchema
-from .services.submission_workflow import build_rubric_text, run_grading_pipeline
+from .services.submission_workflow import build_rubric_text
 
 
-class CriterionGradingTests(APITestCase):
+class CriterionGradingTests(JobExecutionMixin, APITestCase):
     def setUp(self):
+        super().setUp()
+        self.setup_fixture()
+
+    def setup_fixture(self):
         self.teacher = User.objects.create_user(
             email="criteria@example.com", password="test-password"
         )
@@ -86,18 +90,16 @@ class CriterionGradingTests(APITestCase):
         }
 
     def mapping(self):
-        return patch(
-            "apps.grading.services.submission_workflow.map_submission_answers",
-            return_value=SimpleNamespace(
-                answers=[
-                    SimpleNamespace(
-                        part_key="Q1",
-                        extracted_answer_text=self.submission.raw_response_text,
-                        mapping_confidence=0.95,
-                    )
-                ]
-            ),
-        )
+        self.ai_outputs["answer_mapping"] = {
+            "answers": [
+                {
+                    "part_key": "Q1",
+                    "extracted_answer_text": self.submission.raw_response_text,
+                    "mapping_confidence": 0.95,
+                }
+            ]
+        }
+        return nullcontext()
 
     @patch("apps.grading.services.grading_pipeline.OpenAIChatService")
     def test_prompt_uses_saved_reference_and_every_rubric_criterion(self, service):
@@ -118,11 +120,11 @@ class CriterionGradingTests(APITestCase):
             self.assertIn(f"{Decimal(str(criterion.max_points)):.2f} pts", prompt)
         self.assertIn("every supplied criterion_id", parse.call_args.kwargs["system_prompt"])
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.grading_pipeline.grade_question_part")
     def test_ai_breakdown_persists_and_drives_all_totals(self, grade):
         grade.return_value = self.grade()
         with self.mapping():
-            run_grading_pipeline(self.submission)
+            self.run_submission_job(self.submission, regrade=True)
         result = GradingResult.objects.get(submission=self.submission)
         self.assertEqual(result.ai_score, Decimal("3.50"))
         self.assertEqual(result.final_score, Decimal("3.50"))
@@ -145,7 +147,7 @@ class CriterionGradingTests(APITestCase):
         self.assertEqual(response.data["grading_results"], [])
         self.assertFalse(GradingResult.objects.exists())
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.grading_pipeline.grade_question_part")
     def test_manual_review_needs_no_ai_and_totals_include_zero(self, grade):
         response = self.client.patch(self.url, self.review_payload(("0", "2.5")), format="json")
         self.assertEqual(response.status_code, 200, response.data)
@@ -216,9 +218,8 @@ class CriterionGradingTests(APITestCase):
         )
         self.assertFalse(GradingResult.objects.exists())
 
-    @patch("apps.grading.services.submission_workflow.logger")
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
-    def test_invalid_ai_breakdowns_do_not_replace_existing_results(self, grade, _logger):
+    @patch("apps.grading.services.grading_pipeline.grade_question_part")
+    def test_invalid_ai_breakdowns_do_not_replace_existing_results(self, grade):
         existing = GradingResult.objects.create(
             submission=self.submission,
             question_part=self.question,
@@ -244,17 +245,19 @@ class CriterionGradingTests(APITestCase):
                 response = self.client.post(
                     reverse("submission-grade", args=[self.submission.pk]), {}, format="json"
                 )
-            self.assertEqual(response.status_code, 502, response.data)
+            self.assertEqual(response.status_code, 202, response.data)
+            self.drain_jobs()
+            self.assertEqual(AIJob.objects.get(id=response.data["id"]).state, "failed")
             existing.refresh_from_db()
             self.assertEqual(existing.final_score, Decimal("1"))
             self.assertEqual(existing.ai_feedback, "Keep existing feedback.")
             self.assertEqual(existing.criterion_results, [])
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.grading_pipeline.grade_question_part")
     def test_missing_answer_has_zero_and_feedback_for_every_criterion(self, grade):
-        self.submission.raw_response_text = ""
-        self.submission.save()
-        run_grading_pipeline(self.submission)
+        with self.mapping():
+            self.ai_outputs["answer_mapping"]["answers"][0]["extracted_answer_text"] = ""
+            self.run_submission_job(self.submission)
         result = GradingResult.objects.get(submission=self.submission)
         self.assertEqual(len(result.criterion_results), 2)
         for row in result.criterion_results:
@@ -275,31 +278,27 @@ class CriterionGradingTests(APITestCase):
         self.assertEqual(response.data["grading_results"][0]["criterion_results"], [])
         self.assertEqual(len(response.data["questions"][0]["criteria"]), 2)
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.grading_pipeline.grade_question_part")
     def test_teacher_criterion_overrides_survive_regrading(self, grade):
         grade.return_value = self.grade()
         with self.mapping():
-            run_grading_pipeline(self.submission)
+            self.run_submission_job(self.submission, regrade=True)
         response = self.client.patch(self.url, self.review_payload(("0", "2.5")), format="json")
         self.assertEqual(response.status_code, 200)
-        StudentSubmission.objects.filter(pk=self.submission.pk).update(
-            updated_at=timezone.now() - timedelta(days=1)
-        )
-        self.submission.refresh_from_db()
         grade.return_value = self.grade((2, 3))
         with self.mapping():
-            run_grading_pipeline(self.submission)
+            self.run_submission_job(self.submission, regrade=True)
         result = GradingResult.objects.get(submission=self.submission)
         self.assertEqual(result.ai_score, Decimal("5"))
         self.assertEqual(result.final_score, Decimal("2.5"))
         self.assertEqual(result.criterion_results[0]["final_score"], "0.00")
         self.assertEqual(result.criterion_results[0]["final_feedback"], "Reviewed Definition.")
 
-    @patch("apps.grading.services.submission_workflow.grade_question_part")
+    @patch("apps.grading.services.grading_pipeline.grade_question_part")
     def test_clearing_a_criterion_does_not_export_ai_score_as_final_total(self, grade):
         grade.return_value = self.grade()
         with self.mapping():
-            run_grading_pipeline(self.submission)
+            self.run_submission_job(self.submission, regrade=True)
         response = self.client.patch(self.url, self.review_payload((None, "2")), format="json")
         self.assertEqual(response.status_code, 200)
         self.submission.refresh_from_db()

@@ -21,12 +21,16 @@ type RequestOptions = {
   headers?: HeadersInit
   method?: string
   timeoutMs?: number
+  signal?: AbortSignal
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}) {
   const headers = new Headers(options.headers)
   const csrfToken = getCookie('csrftoken')
   const controller = new AbortController()
+  const abort = () => controller.abort()
+  options.signal?.addEventListener('abort', abort, { once: true })
+  if (options.signal?.aborted) controller.abort()
   const timeoutId =
     typeof options.timeoutMs === 'number'
       ? window.setTimeout(() => controller.abort(), options.timeoutMs)
@@ -50,11 +54,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
       signal: controller.signal,
     })
   } catch (error) {
+    options.signal?.removeEventListener('abort', abort)
     if (timeoutId !== null) {
       window.clearTimeout(timeoutId)
     }
 
     if (error instanceof DOMException && error.name === 'AbortError') {
+      if (options.signal?.aborted) throw error
       throw new ApiError(
         'Graider is taking longer than expected to wake. Refresh in a moment.',
         0,
@@ -68,6 +74,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
   if (timeoutId !== null) {
     window.clearTimeout(timeoutId)
   }
+  options.signal?.removeEventListener('abort', abort)
 
   const contentType = response.headers.get('content-type') ?? ''
   const data = contentType.includes('application/json')

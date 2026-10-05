@@ -12,6 +12,7 @@ import {
 } from '../api/assignments'
 import { ApiError } from '../api/client'
 import { getApiErrorMessage } from '../api/errors'
+import { useAIJobs } from '../hooks/useAIJobs'
 import { AIButton } from '../components/AIButton'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
@@ -23,6 +24,9 @@ export function AssignmentOverviewPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const jobs = useAIJobs()
+  const questionJob = jobs.find('questions', assignmentId)
+  const [generationNotice, setGenerationNotice] = useState<string | null>(null)
   const [form, setForm] = useState<AssignmentPayload>({
     title: '',
     course_name: '',
@@ -97,16 +101,15 @@ export function AssignmentOverviewPage() {
 
   const regenerateMutation = useMutation({
     mutationFn: async (payload: AssignmentPayload) => {
-      await updateAssignment(assignmentId!, sourcePayload(payload))
+      if (drafts.isDirty('assignment')) await updateMutation.mutateAsync(payload)
+      else validateSource()
       return generateQuestions(assignmentId!, true)
     },
-    onSuccess: async () => {
-      setFileInputVersion((version) => version + 1)
-      setForm((current) => ({ ...current, source_file: null }))
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
+    onSuccess: (result) => {
+      jobs.track(result)
+      setGenerationNotice('Question extraction queued. You can continue using the workspace.')
     },
+    onError: () => jobs.refresh(),
   })
 
   const deleteMutation = useMutation({
@@ -354,6 +357,14 @@ export function AssignmentOverviewPage() {
               </label>
             </div>
 
+            {generationNotice && (
+              <p
+                role="status"
+                className="mt-4 rounded-2xl bg-fuchsia-50 p-4 text-sm text-fuchsia-800"
+              >
+                {generationNotice}
+              </p>
+            )}
             {updateMutation.isError ? (
               <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {getApiErrorMessage(
@@ -399,6 +410,7 @@ export function AssignmentOverviewPage() {
                 {updateMutation.isPending ? 'Saving...' : 'Save assignment'}
               </button>
               <AIButton
+                job={questionJob}
                 busy={regenerateMutation.isPending}
                 disabled={
                   updateMutation.isPending ||

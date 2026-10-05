@@ -1,10 +1,10 @@
 from decimal import Decimal
-from types import SimpleNamespace
-from unittest.mock import patch
 
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.test_helpers import JobExecutionMixin
 from apps.assignments.models import Assignment, QuestionPart
 
 from . import test_criterion_grading as criterion_tests
@@ -12,9 +12,10 @@ from .models import ReferenceAnswer, RubricCriterion
 from .services.openai_client import LLMGenerationError
 
 
-class ReviewCompletionTests(APITestCase):
+class ReviewCompletionTests(JobExecutionMixin, APITestCase):
     def setUp(self):
-        criterion_tests.CriterionGradingTests.setUp(self)
+        super().setUp()
+        criterion_tests.CriterionGradingTests.setup_fixture(self)
         self.finalize_url = reverse("submission-finalize", args=[self.submission.pk])
 
     def save_review(self, scores=("1.00", "2.00"), flagged=False):
@@ -79,28 +80,37 @@ class ReviewCompletionTests(APITestCase):
         self.assertEqual(self.client.post(self.finalize_url).status_code, 400)
 
 
-class SetupAndReplacementTests(APITestCase):
+class SetupAndReplacementTests(JobExecutionMixin, APITestCase):
     def setUp(self):
-        criterion_tests.CriterionGradingTests.setUp(self)
+        super().setUp()
+        criterion_tests.CriterionGradingTests.setup_fixture(self)
 
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_failed_bulk_replacement_keeps_every_existing_answer(self, generate):
+    def test_failed_bulk_replacement_keeps_every_existing_answer(self):
         saved = self.question.reference_answer.answer_text
         second = QuestionPart.objects.create(
             assignment=self.assignment, part_key="Q2", text="Other", max_marks=1
         )
         ReferenceAnswer.objects.create(question_part=second, answer_text="Second teacher answer")
-        generate.side_effect = [
-            SimpleNamespace(answer_text="First replacement"),
-            LLMGenerationError("Synthetic provider failure"),
-        ]
+        replies = iter(
+            [{"answer_text": "First replacement"}, LLMGenerationError("Synthetic provider failure")]
+        )
+
+        def provider(**kwargs):
+            output = next(replies)
+            if isinstance(output, Exception):
+                raise output
+            return output
+
+        self.ai_outputs["reference_answer"] = provider
         response = self.client.post(
             reverse("reference-answer-generate", args=[self.assignment.pk]),
             {"replace_existing": True},
             format="json",
         )
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        self.assertEqual(AIJob.objects.get(id=response.data["id"]).state, "failed")
+        self.assertEqual(self.ai_provider.call_count, 2)
         self.assertEqual(
             ReferenceAnswer.objects.get(question_part=self.question).answer_text, saved
         )
@@ -137,86 +147,90 @@ class SetupAndReplacementTests(APITestCase):
         self.submission.save()
         self.assertEqual(self.assignment.workflow_status, "reference_answers_ready")
 
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_answer_generation_fills_missing_and_requires_explicit_replacement(self, generate):
+    def test_answer_generation_fills_missing_and_requires_explicit_replacement(self):
         url = reverse("reference-answer-generate", args=[self.assignment.pk])
         saved = self.question.reference_answer.answer_text
-        self.assertEqual(self.client.post(url, {}, format="json").json(), [])
-        generate.assert_not_called()
+        self.assertEqual(self.client.post(url, {}, format="json").status_code, 400)
+        self.ai_provider.assert_not_called()
         missing = QuestionPart.objects.create(
             assignment=self.assignment, part_key="Q2", text="Other", max_marks=1
         )
-        generate.return_value = SimpleNamespace(answer_text="New AI answer")
+        self.ai_outputs["reference_answer"] = {"answer_text": "New AI answer"}
         response = self.client.post(url, {}, format="json")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(generate.call_count, 1)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        self.assertEqual(self.ai_provider.call_count, 1)
         self.assertEqual(
             ReferenceAnswer.objects.get(question_part=self.question).answer_text, saved
         )
         self.assertEqual(
             ReferenceAnswer.objects.get(question_part=missing).answer_text, "New AI answer"
         )
-        self.client.post(
-            url, {"question_part_id": self.question.pk, "replace_existing": True}, format="json"
+        self.assertEqual(
+            self.client.post(
+                url, {"question_part_id": self.question.pk, "replace_existing": True}, format="json"
+            ).status_code,
+            202,
         )
+        self.drain_jobs()
         self.assertEqual(
             ReferenceAnswer.objects.get(question_part=self.question).answer_text, "New AI answer"
         )
 
-    @patch("apps.grading.views.generate_rubric_criteria")
-    def test_rubric_generation_preserves_existing_without_confirmation(self, generate):
+    def test_rubric_generation_preserves_existing_without_confirmation(self):
         url = reverse("rubric-generate", args=[self.assignment.pk])
         ids = list(self.question.rubric_criteria.values_list("id", flat=True))
-        self.assertEqual(self.client.post(url, {}, format="json").json(), [])
-        generate.assert_not_called()
-        generate.return_value = SimpleNamespace(
-            criteria=[SimpleNamespace(title="New", description="New rubric", max_points=5)]
-        )
+        self.assertEqual(self.client.post(url, {}, format="json").status_code, 400)
+        self.ai_provider.assert_not_called()
+        self.ai_outputs["rubric_generation"] = {
+            "criteria": [{"title": "New", "description": "New rubric", "max_points": 5}]
+        }
         response = self.client.post(
             url, {"question_part_id": self.question.pk, "replace_existing": True}, format="json"
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
         self.assertNotEqual(list(self.question.rubric_criteria.values_list("id", flat=True)), ids)
         self.assertEqual(self.question.rubric_criteria.get().title, "New")
 
-    @patch("apps.grading.views.generate_reference_answer")
-    def test_teacher_answer_added_during_ai_call_is_preserved(self, generate):
+    def test_teacher_answer_added_during_ai_call_is_preserved(self):
         self.question.reference_answer.delete()
 
-        def provider(assignment, question):
+        def provider(**kwargs):
             ReferenceAnswer.objects.create(
-                question_part=question, answer_text="Teacher added during generation"
+                question_part=self.question, answer_text="Teacher added during generation"
             )
-            return SimpleNamespace(answer_text="Late AI answer")
+            return {"answer_text": "Late AI answer"}
 
-        generate.side_effect = provider
+        self.ai_outputs["reference_answer"] = provider
         response = self.client.post(
             reverse("reference-answer-generate", args=[self.assignment.pk]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        self.assertEqual(AIJob.objects.get(id=response.data["id"]).state, "superseded")
         self.assertEqual(
             ReferenceAnswer.objects.get(question_part=self.question).answer_text,
             "Teacher added during generation",
         )
 
-    @patch("apps.grading.views.generate_rubric_criteria")
-    def test_teacher_rubric_added_during_ai_call_is_preserved(self, generate):
+    def test_teacher_rubric_added_during_ai_call_is_preserved(self):
         self.question.rubric_criteria.all().delete()
 
-        def provider(question, reference):
+        def provider(**kwargs):
             RubricCriterion.objects.create(
-                question_part=question,
+                question_part=self.question,
                 title="Teacher criterion",
                 description="Entered while generating",
                 max_points=5,
             )
-            return SimpleNamespace(
-                criteria=[SimpleNamespace(title="Late AI", description="AI", max_points=5)]
-            )
+            return {"criteria": [{"title": "Late AI", "description": "AI", "max_points": 5}]}
 
-        generate.side_effect = provider
+        self.ai_outputs["rubric_generation"] = provider
         response = self.client.post(
             reverse("rubric-generate", args=[self.assignment.pk]), {}, format="json"
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        self.assertEqual(AIJob.objects.get(id=response.data["id"]).state, "superseded")
         self.assertEqual(self.question.rubric_criteria.get().title, "Teacher criterion")

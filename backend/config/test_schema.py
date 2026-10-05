@@ -63,15 +63,19 @@ class GeneratedSchemaTests(SimpleTestCase):
     def test_envelopes_binary_downloads_and_empty_requests_match_api(self):
         paths = self.schema["paths"]
         operation = paths["/api/assignments/{assignment_id}/grade-all"]["post"]
-        self.assertNotIn("requestBody", operation)
+        request = operation["requestBody"]["content"]["application/json"]["schema"]
+        request_component = self.schema["components"]["schemas"][request["$ref"].rsplit("/", 1)[-1]]
+        self.assertIn("regrade", request_component["properties"])
+        self.assertFalse(operation["requestBody"].get("required", False))
         self.assertEqual(
-            set(operation["responses"]), {"200", "400", "403", "404", "409", "429", "502", "503"}
+            set(operation["responses"]),
+            {"202", "400", "403", "404", "409", "429", "503"},
         )
-        response = operation["responses"]["200"]["content"]["application/json"]["schema"]
+        response = operation["responses"]["202"]["content"]["application/json"]["schema"]
         component = self.schema["components"]["schemas"][response["$ref"].rsplit("/", 1)[-1]]
-        self.assertEqual(
-            set(component["properties"]), {"graded_count", "failed_count", "submissions"}
-        )
+        self.assertIn("children", component["properties"])
+        self.assertIn("state", component["properties"])
+        self.assertNotIn("input_snapshot", component["properties"])
         download = paths["/api/assignments/{assignment_id}/export.csv"]["get"]
         self.assertEqual(
             download["responses"]["200"]["content"]["text/csv"]["schema"]["format"], "binary"

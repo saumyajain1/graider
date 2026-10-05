@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/auth/", include("apps.accounts.urls")),
     path("accounts/google/login/callback/", google_callback, name="google_callback"),
     path("api/assignments/", include("apps.assignments.urls")),
+    path("api/ai/jobs/", include("apps.ai_jobs.urls")),
     path("api/", include("apps.grading.urls")),
     re_path(
         r"^(?!api(?:/|$)|accounts(?:/|$)|admin(?:/|$)|static(?:/|$)|media(?:/|$)|health(?:/|$)|favicon\.ico(?:/|$)|robots\.txt(?:/|$)).*$",

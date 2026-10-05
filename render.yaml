@@ -33,6 +33,8 @@ services:
         value: us-east-2
       - key: NEON_STORAGE_BUCKET
         value: uploads
+      - key: GRAIDER_AI_JOBS_ENABLED
+        value: 'true'
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_QUESTION_MODEL

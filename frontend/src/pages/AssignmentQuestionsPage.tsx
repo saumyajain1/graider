@@ -13,6 +13,7 @@ import {
   type QuestionPart,
 } from '../api/assignments'
 import { getApiErrorMessage } from '../api/errors'
+import { useAIJobs } from '../hooks/useAIJobs'
 import { AIButton } from '../components/AIButton'
 import { QueryError } from '../components/QueryError'
 import { WorkflowBack, WorkflowContinue } from '../components/WorkflowNavigation'
@@ -210,6 +211,9 @@ export function AssignmentQuestionsPage() {
   const { assignmentId } = useParams()
   const queryClient = useQueryClient()
   const drafts = useDraftSaves()
+  const jobs = useAIJobs()
+  const questionJob = jobs.find('questions', assignmentId)
+  const [replacementVersion, setReplacementVersion] = useState(0)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [newQuestion, setNewQuestion] = useState({
     source_label: '',
@@ -281,12 +285,21 @@ export function AssignmentQuestionsPage() {
 
   const generateMutation = useMutation({
     mutationFn: () => generateQuestions(assignmentId!, true),
-    onError: (error) => setErrorMessage(getApiErrorMessage(error)),
+    onError: (error) => {
+      setErrorMessage(getApiErrorMessage(error))
+      jobs.refresh()
+    },
     onMutate: () => setErrorMessage(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId, 'questions'] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments', assignmentId] })
-      await queryClient.invalidateQueries({ queryKey: ['assignments'] })
+    onSuccess: (result) => {
+      jobs.track(result)
+      setReplacementVersion((version) => version + 1)
+      setNewQuestion({
+        source_label: '',
+        parent_key: '',
+        text: '',
+        max_marks: '',
+        part_type: 'question',
+      })
     },
   })
 
@@ -338,7 +351,8 @@ export function AssignmentQuestionsPage() {
     updateMutation.isPending ||
     deleteMutation.isPending ||
     reorderMutation.isPending ||
-    generateMutation.isPending
+    generateMutation.isPending ||
+    Boolean(questionJob)
   const assignment = assignmentQuery.data
   const questions = questionsQuery.data ?? []
 
@@ -385,13 +399,14 @@ export function AssignmentQuestionsPage() {
               rubrics. The assignment total is the sum of its scored question totals.
             </p>
             <AIButton
+              job={questionJob}
               busy={generateMutation.isPending}
               disabled={isBusy}
               onClick={() => {
                 if (
-                  questions.length > 0 &&
+                  (questions.length > 0 || drafts.isDirty()) &&
                   !window.confirm(
-                    'Replace all questions? Existing reference answers, rubrics, and per-question grading results will also be removed.',
+                    'Replace all questions, including unsaved question edits? Existing reference answers, rubrics, and per-question grading results will also be removed.',
                   )
                 )
                   return
@@ -537,7 +552,7 @@ export function AssignmentQuestionsPage() {
           <section className="space-y-4">
             {questions.map((question, index) => (
               <QuestionEditor
-                key={question.id}
+                key={`${question.id}-${replacementVersion}`}
                 question={question}
                 isBusy={isBusy}
                 isFirst={index === 0}

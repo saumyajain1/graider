@@ -15,8 +15,10 @@ def map_submission_answers(
     assignment: Assignment,
     submission_text: str,
     question_parts: list[QuestionPart],
+    *,
+    service=None,
 ):
-    service = OpenAIChatService()
+    service = service or OpenAIChatService()
     question_listing = "\n".join(
         dedent(
             f"""
@@ -60,8 +62,10 @@ def grade_question_part(
     reference_answer_text: str,
     rubric_text: str,
     extracted_answer_text: str,
+    *,
+    service=None,
 ):
-    service = OpenAIChatService()
+    service = service or OpenAIChatService()
     shared_context = build_shared_context(question_part)
 
     return service.parse(

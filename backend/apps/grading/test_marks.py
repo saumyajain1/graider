@@ -1,5 +1,4 @@
 from decimal import Decimal
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.urls import reverse
@@ -7,6 +6,8 @@ from pydantic import ValidationError
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.ai_jobs.models import AIJob
+from apps.ai_jobs.test_helpers import JobExecutionMixin
 from apps.assignments.models import Assignment, QuestionPart
 
 from .models import GradingResult, ReferenceAnswer, RubricCriterion, StudentSubmission
@@ -14,13 +15,13 @@ from .services.generation import generate_question_parts
 from .services.schemas import GeneratedQuestionSetSchema
 from .services.submission_workflow import (
     SubmissionNotReadyError,
-    run_grading_pipeline,
     validate_submission_ready_for_grading,
 )
 
 
-class MarksWorkflowTests(APITestCase):
+class MarksWorkflowTests(JobExecutionMixin, APITestCase):
     def setUp(self):
+        super().setUp()
         self.user = User.objects.create_user(email="marks@example.com", password="test-only")
         self.client.force_authenticate(self.user)
         self.assignment = Assignment.objects.create(
@@ -91,7 +92,7 @@ class MarksWorkflowTests(APITestCase):
             with self.subTest(marks=marks), self.assertRaises(ValidationError):
                 GeneratedQuestionSetSchema(parts=[{"text": "Question", "max_marks": marks}])
 
-    @patch("apps.grading.services.submission_workflow.map_submission_answers")
+    @patch("apps.grading.services.openai_client.OpenAI")
     def test_grading_rejects_missing_or_zero_marks_before_provider_call(self, mapping):
         for marks in (None, Decimal("0")):
             self.question.max_marks = marks
@@ -100,7 +101,7 @@ class MarksWorkflowTests(APITestCase):
                 self.subTest(marks=marks),
                 self.assertRaisesMessage(SubmissionNotReadyError, "positive total marks"),
             ):
-                run_grading_pipeline(self.submission)
+                validate_submission_ready_for_grading(self.submission)
         mapping.assert_not_called()
         self.submission.refresh_from_db()
         self.assertEqual(self.submission.grading_status, "pending")
@@ -116,21 +117,21 @@ class MarksWorkflowTests(APITestCase):
         with self.assertRaisesMessage(SubmissionNotReadyError, "Missing reference answers"):
             validate_submission_ready_for_grading(self.submission)
 
-    @patch("apps.grading.views.generate_rubric_criteria")
-    def test_invalid_ai_rubric_preserves_existing_criteria(self, generate):
-        generate.return_value = SimpleNamespace(
-            criteria=[SimpleNamespace(title="Wrong", description="Wrong total", max_points=4)]
-        )
+    def test_invalid_ai_rubric_preserves_existing_criteria(self):
+        self.ai_outputs["rubric_generation"] = {
+            "criteria": [{"title": "Wrong", "description": "Wrong total", "max_points": 4}]
+        }
         response = self.client.post(
             reverse("rubric-generate", args=[self.assignment.id]),
             {"replace_existing": True},
             format="json",
         )
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 202)
+        self.drain_jobs()
+        self.assertEqual(AIJob.objects.get(id=response.data["id"]).state, "failed")
         self.assertTrue(RubricCriterion.objects.filter(pk=self.criterion.pk).exists())
 
-    @patch("apps.grading.views.generate_rubric_criteria")
-    def test_rubric_generation_rejects_missing_total_before_ai(self, generate):
+    def test_rubric_generation_rejects_missing_total_before_ai(self):
         self.question.max_marks = None
         self.question.save()
         response = self.client.post(
@@ -139,7 +140,7 @@ class MarksWorkflowTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-        generate.assert_not_called()
+        self.ai_provider.assert_not_called()
 
     def test_manual_criteria_reject_nonpositive_points_and_context_targets(self):
         url = reverse("rubric-list", args=[self.assignment.id])

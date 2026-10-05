@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feat/production-deployment]
+    branches: [main, feat/production-deployment, feat/background-ai-jobs]
   workflow_dispatch:
 
 permissions:
@@ -86,10 +86,12 @@ jobs:
           python manage.py test --noinput
           python manage.py makemigrations --check --dry-run
           python manage.py spectacular --validate --fail-on-warn --file /tmp/graider-openapi.yaml
-      - name: Production server and delayed bulk grading
+      - name: Production server and background AI jobs
         run: python scripts/production_smoke.py
       - name: Build production image
         run: docker build --tag graider:ci .
+      - name: Check AI maintenance mode and saved-response recovery
+        run: python scripts/check_ai_job_rollout.py --postgres-container '${{ job.services.postgres.id }}' --image graider:ci
       - name: Check container startup and built assets
         env:
           DJANGO_DEBUG: 'false'

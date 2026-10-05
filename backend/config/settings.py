@@ -36,6 +36,16 @@ def _positive_int_env(name, default):
     return value
 
 
+def _nonnegative_int_env(name, default):
+    try:
+        value = int(os.getenv(name, default))
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"{name} must be a nonnegative integer.") from exc
+    if value < 0:
+        raise ImproperlyConfigured(f"{name} must be a nonnegative integer.")
+    return value
+
+
 def _throttle_rate_env(name, default):
     value = os.getenv(name, default)
     if not re.fullmatch(r"[1-9][0-9]*/(second|minute|hour|day|sec|min|hr|s|m|h|d)", value):
@@ -79,6 +89,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.assignments",
     "apps.grading",
+    "apps.ai_jobs",
 ]
 
 MIDDLEWARE = [
@@ -131,6 +142,10 @@ else:
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise ImproperlyConfigured("Production DATABASE_URL must use PostgreSQL.")
 
+# Local SQLite serializes short job transactions; production uses PostgreSQL row locks.
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    DATABASES["default"].setdefault("OPTIONS", {})["transaction_mode"] = "IMMEDIATE"
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -172,11 +187,28 @@ GRAIDER_USER_MONTHLY_TOKENS = _positive_int_env("GRAIDER_USER_MONTHLY_TOKENS", 5
 GRAIDER_GLOBAL_MONTHLY_TOKENS = _positive_int_env("GRAIDER_GLOBAL_MONTHLY_TOKENS", 2_000_000)
 GRAIDER_USER_AI_REQUESTS_PER_MINUTE = _positive_int_env("GRAIDER_USER_AI_REQUESTS_PER_MINUTE", 40)
 GRAIDER_MAX_OUTPUT_TOKENS = _positive_int_env("GRAIDER_MAX_OUTPUT_TOKENS", 8_192)
-GRAIDER_MAX_GRADE_ALL_SUBMISSIONS = _positive_int_env("GRAIDER_MAX_GRADE_ALL_SUBMISSIONS", 5)
-GRAIDER_MAX_GRADE_ALL_QUESTIONS = _positive_int_env("GRAIDER_MAX_GRADE_ALL_QUESTIONS", 5)
-GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS = _positive_int_env(
-    "GRAIDER_GRADE_REPEAT_COOLDOWN_SECONDS", 120
+# Disable admission and execution together for maintenance; no synchronous fallback.
+GRAIDER_AI_JOBS_ENABLED = _boolean_env("GRAIDER_AI_JOBS_ENABLED", True)
+GRAIDER_AI_CONCURRENCY = _positive_int_env("GRAIDER_AI_CONCURRENCY", 3)
+GRAIDER_AI_STUDENT_CONCURRENCY = _positive_int_env(
+    "GRAIDER_AI_STUDENT_CONCURRENCY", GRAIDER_AI_CONCURRENCY
 )
+GRAIDER_AI_LEASE_SECONDS = _positive_int_env("GRAIDER_AI_LEASE_SECONDS", 90)
+GRAIDER_AI_HEARTBEAT_SECONDS = _positive_int_env("GRAIDER_AI_HEARTBEAT_SECONDS", 10)
+GRAIDER_AI_SCAN_SECONDS = _positive_int_env("GRAIDER_AI_SCAN_SECONDS", 2)
+GRAIDER_AI_FAIRNESS_SECONDS = _positive_int_env("GRAIDER_AI_FAIRNESS_SECONDS", 30)
+GRAIDER_AI_SAFE_RETRIES = _nonnegative_int_env("GRAIDER_AI_SAFE_RETRIES", 2)
+GRAIDER_AI_RETRY_SECONDS = _positive_int_env("GRAIDER_AI_RETRY_SECONDS", 10)
+GRAIDER_AI_DRAIN_SECONDS = _positive_int_env("GRAIDER_AI_DRAIN_SECONDS", 20)
+GRAIDER_AI_WAKE_SOCKET = os.getenv("GRAIDER_AI_WAKE_SOCKET", "/tmp/graider-ai-worker.sock")
+GRAIDER_AI_USER_QUEUE_LIMIT = _positive_int_env("GRAIDER_AI_USER_QUEUE_LIMIT", 20)
+GRAIDER_AI_GLOBAL_QUEUE_LIMIT = _positive_int_env("GRAIDER_AI_GLOBAL_QUEUE_LIMIT", 50)
+GRAIDER_AI_MAX_BATCH_SUBMISSIONS = _positive_int_env("GRAIDER_AI_MAX_BATCH_SUBMISSIONS", 10)
+GRAIDER_AI_MAX_GRADING_QUESTIONS = _positive_int_env("GRAIDER_AI_MAX_GRADING_QUESTIONS", 10)
+
+if GRAIDER_AI_LEASE_SECONDS <= GRAIDER_AI_HEARTBEAT_SECONDS * 3:
+    raise ImproperlyConfigured("GRAIDER_AI_LEASE_SECONDS must exceed three heartbeat intervals.")
+
 DATA_UPLOAD_MAX_MEMORY_SIZE = GRAIDER_MAX_UPLOAD_BYTES
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
 

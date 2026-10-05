@@ -2,8 +2,22 @@ import { useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { StudentSubmission } from '../api/grading'
 import { formatStatus } from '../lib/format'
+import { useAIJobs } from '../hooks/useAIJobs'
+import { jobLabels } from '../lib/aiJobs'
 
-const statuses = ['pending', 'grading', 'graded', 'reviewed', 'finalized', 'failed'] as const
+const statuses = [
+  'pending',
+  'queued',
+  'running',
+  'retry_wait',
+  'paused_quota',
+  'needs_attention',
+  'grading',
+  'graded',
+  'reviewed',
+  'finalized',
+  'failed',
+] as const
 
 export function SubmissionTable({
   submissions,
@@ -15,12 +29,19 @@ export function SubmissionTable({
   gradeAction?: (submission: StudentSubmission) => ReactNode
 }) {
   const id = useId()
+  const jobs = useAIJobs()
+  const visibleStatus = (submission: StudentSubmission) => {
+    const job = jobs.latestForSubmission(submission.id)
+    return job && !['succeeded', 'cancelled', 'superseded'].includes(job.state)
+      ? job.state
+      : submission.grading_status
+  }
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const query = search.trim().toLocaleLowerCase()
   const rows = submissions.filter(
     (submission) =>
-      (!status || submission.grading_status === status) &&
+      (!status || visibleStatus(submission) === status) &&
       (!query ||
         submission.student_name.toLocaleLowerCase().includes(query) ||
         submission.student_identifier.toLocaleLowerCase().includes(query)),
@@ -96,8 +117,16 @@ export function SubmissionTable({
                   <span
                     className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${submission.grading_status === 'failed' ? 'bg-rose-50 text-rose-700' : submission.grading_status === 'grading' ? 'bg-amber-50 text-amber-800' : ['graded', 'reviewed', 'finalized'].includes(submission.grading_status) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
                   >
-                    {formatStatus(submission.grading_status)}
+                    {jobs.latestForSubmission(submission.id) &&
+                    visibleStatus(submission) !== submission.grading_status
+                      ? jobLabels[jobs.latestForSubmission(submission.id)!.state]
+                      : formatStatus(submission.grading_status)}
                   </span>
+                  {jobs.latestForSubmission(submission.id)?.error_message && (
+                    <p className="mt-2 max-w-xs text-xs text-rose-700">
+                      {jobs.latestForSubmission(submission.id)!.error_message}
+                    </p>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-4 text-slate-600">
                   {submission.upload_source === 'csv'
