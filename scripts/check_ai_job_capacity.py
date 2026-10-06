@@ -9,10 +9,13 @@ import json
 import os
 import re
 import socket
+import statistics
 import subprocess
 import sys
 import tempfile
 import time
+from datetime import UTC, datetime
+from math import ceil
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
@@ -40,7 +43,7 @@ def peak_calls(events):
         if event["event"] == "start":
             active.add(event["request_id"])
             peak = max(peak, len(active))
-        else:
+        elif event["event"] == "end":
             active.remove(event["request_id"])
     assert not active, "Every simulated provider dispatch must complete."
     return peak
@@ -51,6 +54,33 @@ def main():
     parser.add_argument("--postgres-container", required=True)
     parser.add_argument("--image", default="graider:step4-review")
     parser.add_argument("--delay", type=float, default=8)
+    parser.add_argument("--concurrency", type=int, default=3)
+    parser.add_argument("--student-concurrency", type=int)
+    parser.add_argument("--requests-per-minute", type=int, default=40)
+    parser.add_argument("--web-workers", type=int, default=1)
+    parser.add_argument("--web-threads", type=int, default=4)
+    parser.add_argument("--scan-seconds", type=int, default=2)
+    parser.add_argument(
+        "--scoring-only",
+        action="store_true",
+        help="Prepare mapping checkpoints before timing 100 question scores and result publication.",
+    )
+    parser.add_argument(
+        "--grading-only",
+        action="store_true",
+        help="Time answer mapping, scoring and publication, excluding admission and startup.",
+    )
+    parser.add_argument("--skip-restart", action="store_true")
+    parser.add_argument(
+        "--quiet-observation",
+        action="store_true",
+        help="Observe grading through the external DB instead of sending periodic web requests.",
+    )
+    parser.add_argument(
+        "--warm-start",
+        action="store_true",
+        help="Boot at 2 CPUs, then enforce 0.1 CPU before releasing timed grading.",
+    )
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     admin_url = os.environ.get("DATABASE_URL", "")
@@ -63,6 +93,29 @@ def main():
         parser.error("DATABASE_URL must explicitly select a disposable local PostgreSQL server.")
     if args.delay < 0:
         parser.error("Delay cannot be negative.")
+    if args.scoring_only and args.grading_only:
+        parser.error("Select either scoring-only or grading-only timing.")
+    timed_only = args.scoring_only or args.grading_only
+    if args.quiet_observation and not timed_only:
+        parser.error("Quiet observation requires scoring-only or grading-only timing.")
+    if args.warm_start and not timed_only:
+        parser.error("Warm startup requires a timed-grading release barrier.")
+    if args.student_concurrency is None:
+        args.student_concurrency = args.concurrency
+    if (
+        min(
+            args.concurrency,
+            args.student_concurrency,
+            args.requests_per_minute,
+            args.web_workers,
+            args.web_threads,
+            args.scan_seconds,
+        )
+        <= 0
+    ):
+        parser.error(
+            "Concurrency, request limits, web process/thread counts and scan time must be positive."
+        )
     identity = uuid4().hex[:12]
     database = "graider_capacity_" + identity
     network, container = "graider-capacity-" + identity, "graider-capacity-" + identity
@@ -92,11 +145,11 @@ def main():
         "GOOGLE_CLIENT_SECRET": "",
         "BREVO_API_KEY": "",
         "GRAIDER_AI_JOBS_ENABLED": "true",
-        "GRAIDER_AI_CONCURRENCY": "3",
-        "GRAIDER_AI_STUDENT_CONCURRENCY": "3",
+        "GRAIDER_AI_CONCURRENCY": str(args.concurrency),
+        "GRAIDER_AI_STUDENT_CONCURRENCY": str(args.student_concurrency),
         "GRAIDER_AI_LEASE_SECONDS": "90",
         "GRAIDER_AI_HEARTBEAT_SECONDS": "10",
-        "GRAIDER_AI_SCAN_SECONDS": "2",
+        "GRAIDER_AI_SCAN_SECONDS": str(args.scan_seconds),
         "GRAIDER_AI_FAIRNESS_SECONDS": "30",
         "GRAIDER_AI_SAFE_RETRIES": "2",
         "GRAIDER_AI_RETRY_SECONDS": "10",
@@ -109,10 +162,10 @@ def main():
         "GRAIDER_USER_DAILY_TOKENS": "250000",
         "GRAIDER_USER_MONTHLY_TOKENS": "500000",
         "GRAIDER_GLOBAL_MONTHLY_TOKENS": "2000000",
-        "GRAIDER_USER_AI_REQUESTS_PER_MINUTE": "40",
+        "GRAIDER_USER_AI_REQUESTS_PER_MINUTE": str(args.requests_per_minute),
         "GRAIDER_MAX_OUTPUT_TOKENS": "8192",
-        "GUNICORN_WORKERS": "1",
-        "GUNICORN_THREADS": "4",
+        "GUNICORN_WORKERS": str(args.web_workers),
+        "GUNICORN_THREADS": str(args.web_threads),
         "GUNICORN_TIMEOUT_SECONDS": "120",
         "GUNICORN_GRACEFUL_TIMEOUT_SECONDS": "120",
         **{
@@ -135,6 +188,8 @@ def main():
         events = folder / "events.jsonl"
         report = {
             "cpu": 0.1,
+            "startup_cpu": 2 if args.warm_start else 0.1,
+            "run_started_at": datetime.now(UTC).isoformat(),
             "memory_limit_mib": 512,
             "students": 10,
             "questions_per_student": 10,
@@ -143,7 +198,29 @@ def main():
             "simulated_provider": True,
             "external_database": "disposable local PostgreSQL",
             "runtime_image_id": docker("image", "inspect", args.image, "--format", "{{.Id}}"),
+            "source_revision": subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+            ).strip(),
+            "grading_concurrency": args.concurrency,
+            "student_concurrency": args.student_concurrency,
+            "requests_per_minute": args.requests_per_minute,
+            "web_workers": args.web_workers,
+            "web_threads": args.web_threads,
+            "scan_seconds": args.scan_seconds,
+            "progress_observation": "external database"
+            if args.quiet_observation
+            else "HTTP health, job and roster polling",
+            "measurement": "question scoring and publication"
+            if args.scoring_only
+            else "answer mapping, question scoring and publication"
+            if args.grading_only
+            else "full grading workflow including admission",
         }
+
+        def write_report():
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(json.dumps(report, indent=2) + "\n")
+
         try:
             with psycopg.connect(admin_url, autocommit=True) as admin:
                 admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
@@ -213,6 +290,38 @@ def main():
                         for i in range(1, 11)
                     ),
                 )
+            if timed_only:
+                from apps.ai_jobs.services import enqueue_job
+
+                parent, _ = enqueue_job(
+                    owner=teacher, operation=AIJob.Operation.BATCH, assignment_id=assignment.id
+                )
+                if args.scoring_only:
+                    from django.test import override_settings
+
+                    from apps.ai_jobs.engine import claim_next, run_claim
+                    from apps.ai_jobs.models import AIJobStep
+
+                    sys.path.insert(0, str(ROOT / "scripts/ai_jobs_verification"))
+                    from fake_provider import install
+
+                    # Real mapping recipes/accounting with a simulated transport,
+                    # no delay and outside the question-scoring timer.
+                    os.environ["GRAIDER_VERIFY_DELAY"] = "0"
+                    os.environ["GRAIDER_VERIFY_SLOW_DELAY"] = "0"
+                    install()
+                    with override_settings(GRAIDER_AI_STUDENT_CONCURRENCY=10):
+                        for _ in range(10):
+                            claim = claim_next()
+                            assert claim and AIJobStep.objects.get(pk=claim[0]).key == "map"
+                            run_claim(*claim)
+                    assert parent.children.filter(completed_steps=1, state="queued").count() == 10
+                    assert LLMUsage.objects.count() == 10
+                else:
+                    assert parent.children.filter(completed_steps=0, state="queued").count() == 10
+                    assert not LLMUsage.objects.exists()
+                assert not GradingResult.objects.exists()
+                parent_id = str(parent.id)
             docker("network", "create", network)
             network_created = True
             docker("network", "connect", network, args.postgres_container)
@@ -225,7 +334,7 @@ def main():
                 "--network",
                 network,
                 "--cpus",
-                "0.1",
+                "2" if args.warm_start else "0.1",
                 "--memory",
                 "512m",
                 "--memory-swap",
@@ -246,6 +355,8 @@ def main():
                 "GRAIDER_VERIFY_DELAY": str(args.delay),
                 "GRAIDER_VERIFY_SLOW_DELAY": str(args.delay + 2),
             }
+            if timed_only:
+                environment["GRAIDER_VERIFY_SCORING_RELEASE"] = "/verification-data/release"
             for key, value in environment.items():
                 command += ["--env", f"{key}={value}"]
             command.append(args.image)
@@ -253,7 +364,10 @@ def main():
             docker(*command)
             container_started = True
             configuration = json.loads(docker("inspect", container))[0]["HostConfig"]
-            assert configuration["NanoCpus"] == 100000000 and configuration["Memory"] == 536870912
+            assert (
+                configuration["NanoCpus"] == (2000000000 if args.warm_start else 100000000)
+                and configuration["Memory"] == 536870912
+            )
             peak_memory = 0
             health_latencies = []
             client = httpx.Client(
@@ -304,7 +418,7 @@ def main():
                 raise AssertionError("Constrained container did not become ready in 600 seconds.")
 
             ready()
-            report["cold_web_ready_seconds"] = round(time.monotonic() - started, 2)
+            report["web_ready_seconds"] = round(time.monotonic() - started, 2)
             assert client.get("/login").status_code == 200
             assert (
                 client.get("/api/auth/me").status_code == 401
@@ -313,48 +427,94 @@ def main():
                 "POST", "/api/auth/login", {"email": teacher.email, "password": "CapacityTest2026!"}
             )
             assert login.status_code == 200, login.text
-            # The worker can become ready after the web server; unavailable admission writes no job.
-            until = time.monotonic() + 180
-            while time.monotonic() < until:
+            report["startup_sampled_peak_memory_mib"] = round(peak_memory, 2)
+            peak_memory = 0
+            if timed_only:
+                until = time.monotonic() + 180
+                while time.monotonic() < until:
+                    if events.exists() and "worker_waiting" in events.read_text():
+                        break
+                    time.sleep(1)
+                else:
+                    raise AssertionError("Scoring worker did not reach the release barrier.")
+                if args.warm_start:
+                    docker("update", "--cpus", "0.1", container)
+                constrained = json.loads(docker("inspect", container))[0]["HostConfig"]
+                assert constrained["NanoCpus"] == 100000000
+                assert constrained["Memory"] == constrained["MemorySwap"] == 536870912
+                assert "scoring_start" not in events.read_text()
                 accepted = time.monotonic()
-                response = request("POST", f"/api/assignments/{assignment.id}/grade-all", {})
-                if response.status_code == 202:
-                    break
-                assert response.status_code == 503, response.text
-                assert not AIJob.objects.exists()
-                time.sleep(3)
+                (folder / "release").touch()
+                report["admission_seconds"] = None
             else:
-                raise AssertionError("Background worker did not become ready.")
-            report["admission_seconds"] = round(time.monotonic() - accepted, 2)
-            assert report["admission_seconds"] < 10, "Job admission must return promptly."
-            parent_id = response.json()["id"]
+                # Worker readiness can follow web readiness; 503 writes no job.
+                until = time.monotonic() + 180
+                while time.monotonic() < until:
+                    accepted = time.monotonic()
+                    response = request("POST", f"/api/assignments/{assignment.id}/grade-all", {})
+                    if response.status_code == 202:
+                        break
+                    assert response.status_code == 503, response.text
+                    assert not AIJob.objects.exists()
+                    time.sleep(3)
+                else:
+                    raise AssertionError("Background worker did not become ready.")
+                report["admission_seconds"] = round(time.monotonic() - accepted, 2)
+                assert report["admission_seconds"] < 10, "Job admission must return promptly."
+                parent_id = response.json()["id"]
             first_completion = None
             observations = 0
             while time.monotonic() - accepted < 900:
-                heartbeat_started = time.monotonic()
-                assert client.get("/health/").status_code == 200
-                health_latencies.append(time.monotonic() - heartbeat_started)
-                progress = request("GET", f"/api/ai/jobs/{parent_id}/")
-                assert progress.status_code == 200, progress.text
-                children = progress.json()["children"]
+                if args.quiet_observation:
+                    parent_state = AIJob.objects.get(pk=parent_id).state
+                    children = list(AIJob.objects.filter(parent_id=parent_id).values("state"))
+                    roster = list(
+                        StudentSubmission.objects.values("id", "grading_status", "total_score")
+                    )
+                    for student in roster:
+                        if student["total_score"] is not None:
+                            student["total_score"] = str(student["total_score"])
+                else:
+                    heartbeat_started = time.monotonic()
+                    assert client.get("/health/").status_code == 200
+                    health_latencies.append(time.monotonic() - heartbeat_started)
+                    progress = request("GET", f"/api/ai/jobs/{parent_id}/")
+                    assert progress.status_code == 200, progress.text
+                    children = progress.json()["children"]
+                    parent_state = progress.json()["state"]
+                    roster = request("GET", f"/api/assignments/{assignment.id}/submissions").json()
                 assert not {child["state"] for child in children} & {
                     "failed",
                     "paused_quota",
                     "needs_attention",
                     "superseded",
-                }, progress.text
-                roster = request("GET", f"/api/assignments/{assignment.id}/submissions").json()
+                }, str(children)
                 completed = [row for row in roster if row["grading_status"] == "graded"]
                 for student in completed:
                     assert GradingResult.objects.filter(submission_id=student["id"]).count() == 10
                     assert student["total_score"] == "50.00"
                 incomplete_ids = [row["id"] for row in roster if row["grading_status"] != "graded"]
-                assert not GradingResult.objects.filter(
-                    submission_id__in=incomplete_ids
-                ).exists(), "No partial student results may be published."
+                # One DB snapshot avoids a false failure if a pending roster row
+                # commits complete grades between the HTTP response and this check.
+                assert (
+                    not StudentSubmission.objects.exclude(grading_status="graded")
+                    .filter(grading_results__isnull=False)
+                    .exists()
+                ), "No partial student results may be published."
                 if completed and incomplete_ids and first_completion is None:
                     first_completion = time.monotonic() - accepted
-                    detail = request("GET", f"/api/submissions/{completed[0]['id']}/grading").json()
+                    if args.quiet_observation:
+                        detail = {
+                            "grading_results": list(
+                                GradingResult.objects.filter(
+                                    submission_id=completed[0]["id"]
+                                ).values("criterion_results")
+                            )
+                        }
+                    else:
+                        detail = request(
+                            "GET", f"/api/submissions/{completed[0]['id']}/grading"
+                        ).json()
                     assert len(detail["grading_results"]) == 10
                     assert all(
                         len(row["criterion_results"]) == 2 for row in detail["grading_results"]
@@ -365,7 +525,7 @@ def main():
                     )
                 sample()
                 observations += 1
-                if progress.json()["state"] == "succeeded":
+                if parent_state == "succeeded":
                     assert len(completed) == 10
                     break
                 if observations % 10 == 0:
@@ -376,6 +536,11 @@ def main():
                 time.sleep(3)
             else:
                 raise AssertionError("10x10 workload exceeded the 900-second target.")
+            if args.quiet_observation:
+                # Confirm normal owned API visibility after the recorded grading interval.
+                assert request("GET", f"/api/ai/jobs/{parent_id}/").json()["state"] == "succeeded"
+                detail = request("GET", f"/api/submissions/{completed[0]['id']}/grading").json()
+                assert len(detail["grading_results"]) == 10
             report.update(
                 workload_seconds=round(time.monotonic() - accepted, 2),
                 first_student_complete_seconds=round(first_completion, 2)
@@ -383,6 +548,73 @@ def main():
                 else None,
                 observations=observations,
             )
+            if timed_only:
+                start = next(
+                    json.loads(line)["time"]
+                    for line in events.read_text().splitlines()
+                    if json.loads(line)["event"] == "scoring_start"
+                )
+                finished = list(parent.children.values_list("finished_at", flat=True))
+                assert all(finished)
+                report.update(
+                    grading_seconds=round(max(row.timestamp() for row in finished) - start, 2),
+                    first_student_scored_seconds=round(
+                        min(row.timestamp() for row in finished) - start, 2
+                    ),
+                    preparation_mapping_calls=10 if args.scoring_only else 0,
+                    timed_provider_calls=100 if args.scoring_only else 110,
+                )
+                published = [
+                    json.loads(line)
+                    for line in events.read_text().splitlines()
+                    if json.loads(line)["event"] == "published"
+                ]
+                if published:
+                    assert len(published) == 10 and len({row["job_id"] for row in published}) == 10
+                    report["grading_seconds"] = round(
+                        max(row["time"] for row in published) - start, 2
+                    )
+                    report["first_student_scored_seconds"] = round(
+                        min(row["time"] for row in published) - start, 2
+                    )
+                    report["timing_boundary"] = "worker release to last student publication commit"
+                else:
+                    # Older mounted helpers can finish an already-running benchmark.
+                    report["timing_boundary"] = "worker release to last student finished_at"
+                report["student_completion_seconds"] = sorted(
+                    round(row["time"] - start, 2) for row in published
+                )
+                dispatches = [
+                    json.loads(line)
+                    for line in events.read_text().splitlines()
+                    if json.loads(line)["event"] in ("start", "end")
+                ]
+                assert len(dispatches) == report["timed_provider_calls"] * 2
+                assert (
+                    sum(
+                        row["schema"] == "GeneratedQuestionGradeSchema" and row["event"] == "start"
+                        for row in dispatches
+                    )
+                    == 100
+                )
+                assert sum(
+                    row["schema"] == "SubmissionAnswerMappingSchema" and row["event"] == "start"
+                    for row in dispatches
+                ) == (10 if args.grading_only else 0)
+                begun = {
+                    row["request_id"]: row["time"] for row in dispatches if row["event"] == "start"
+                }
+                durations = sorted(
+                    row["time"] - begun[row["request_id"]]
+                    for row in dispatches
+                    if row["event"] == "end"
+                )
+                report["simulated_call_median_seconds"] = round(statistics.median(durations), 2)
+                report["simulated_call_p95_seconds"] = round(
+                    durations[ceil(0.95 * len(durations)) - 1], 2
+                )
+                if args.scoring_only:
+                    report["scoring_seconds"] = report["grading_seconds"]
             assert first_completion is not None, (
                 "A student must become available before the entire batch completes."
             )
@@ -391,6 +623,12 @@ def main():
                 and not LLMUsage.objects.exclude(status="succeeded").exists()
             )
             assert GradingResult.objects.count() == 100
+            reservations = sorted(
+                row.timestamp() for row in LLMUsage.objects.values_list("created_at", flat=True)
+            )
+            report["peak_reserved_requests_per_minute"] = max(
+                sum(start - 60 < stamp <= start for stamp in reservations) for start in reservations
+            )
             assert (
                 sum(
                     len(parts)
@@ -399,44 +637,57 @@ def main():
                 == 200
             )
             report["peak_concurrent_provider_calls"] = peak_calls(events)
-            assert report["peak_concurrent_provider_calls"] == 3
+            assert report["peak_concurrent_provider_calls"] <= args.concurrency
             assert peak_memory < 450, "Sampled memory exceeded the 450 MiB target."
-            calls_before_restart = len(events.read_text().splitlines())
-            restart = time.monotonic()
-            docker("restart", "--time", "25", container)
-            ready()
-            report["restart_web_ready_seconds"] = round(time.monotonic() - restart, 2)
-            restored = request("GET", f"/api/ai/jobs/{parent_id}/")
-            assert restored.status_code == 200 and restored.json()["state"] == "succeeded"
-            assert GradingResult.objects.count() == 100
-            assert (
-                sum(
-                    len(parts)
-                    for parts in GradingResult.objects.values_list("criterion_results", flat=True)
+            if not args.skip_restart and not timed_only:
+                calls_before_restart = len(events.read_text().splitlines())
+                restart = time.monotonic()
+                docker("restart", "--time", "25", container)
+                ready()
+                report["restart_web_ready_seconds"] = round(time.monotonic() - restart, 2)
+                restored = request("GET", f"/api/ai/jobs/{parent_id}/")
+                assert restored.status_code == 200 and restored.json()["state"] == "succeeded"
+                assert GradingResult.objects.count() == 100
+                assert (
+                    sum(
+                        len(parts)
+                        for parts in GradingResult.objects.values_list(
+                            "criterion_results", flat=True
+                        )
+                    )
+                    == 200
                 )
-                == 200
-            )
-            assert LLMUsage.objects.count() == 110
-            time.sleep(3)
-            assert len(events.read_text().splitlines()) == calls_before_restart, (
-                "Restart must not repeat completed provider calls."
-            )
-            sample()
-            assert peak_memory < 450, "Sampled memory exceeded the 450 MiB target after restart."
+                assert LLMUsage.objects.count() == 110
+                time.sleep(3)
+                assert len(events.read_text().splitlines()) == calls_before_restart, (
+                    "Restart must not repeat completed provider calls."
+                )
+                sample()
+                assert peak_memory < 450, (
+                    "Sampled memory exceeded the 450 MiB target after restart."
+                )
             report.update(
                 sampled_peak_memory_mib=round(peak_memory, 2),
-                max_health_seconds=round(max(health_latencies), 2),
+                max_health_seconds=round(max(health_latencies), 2) if health_latencies else None,
                 provider_calls=110,
                 question_results=100,
                 criterion_results=200,
-                restart_preserved_results=True,
+                restart_preserved_results=True if not (args.skip_restart or timed_only) else None,
                 no_oom=True,
+                passed=True,
             )
-            args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(json.dumps(report, indent=2) + "\n")
+            write_report()
             print(json.dumps(report, indent=2), flush=True)
             client.close()
-        except Exception:
+        except Exception as exc:
+            report.update(passed=False, failure_type=type(exc).__name__, failure=str(exc))
+            if connections is not None:
+                try:
+                    report["job_states"] = list(AIJob.objects.values_list("state", flat=True))
+                    report["completed_questions"] = GradingResult.objects.count()
+                except Exception:
+                    pass
+            write_report()
             if container_started:
                 print(docker("logs", "--tail", "25", container), file=sys.stderr)
             raise

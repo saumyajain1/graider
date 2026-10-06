@@ -88,19 +88,24 @@ The supplied [render.yaml](../render.yaml) describes the service. For manual set
 
 Render's [prebuilt-image documentation](https://render.com/docs/deploying-an-image) explains service creation and deploy hooks. Updating a registry tag alone does not redeploy an image-backed service; the configured GitHub workflow calls the hook. Its [free-service limitations](https://render.com/docs/free) include sleep and an ephemeral filesystem. Database/files live in Neon; work stops during sleep and resumes after incoming traffic wakes the service.
 
-| Setting                                                                      | Production value                                                                               |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `DJANGO_DEBUG`                                                               | `false`                                                                                        |
-| `DJANGO_SECRET_KEY`                                                          | Unique random secret, at least 50 characters                                                   |
-| `DJANGO_ALLOWED_HOSTS`                                                       | Empty on Render if using its automatically detected hostname; list custom hostnames explicitly |
-| `DATABASE_URL`                                                               | Neon PostgreSQL URL with required TLS, including `sslmode=require`                             |
-| `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`          | Neon Object Storage endpoint and credentials                                                   |
-| `AWS_REGION`, `NEON_STORAGE_BUCKET`                                          | `us-east-2`, `uploads`                                                                         |
-| `GRAIDER_AI_JOBS_ENABLED`                                                    | `true`                                                                                         |
-| `OPENAI_API_KEY`                                                             | Dedicated project key with access to the configured models                                     |
-| `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for a single-origin deployment                                                           |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                   | Optional matching production Google client                                                     |
-| `BREVO_API_KEY`, `GRAIDER_FROM_EMAIL`                                        | Optional verified email configuration for password recovery                                    |
+| Setting                                                                      | Production value                                                                                          |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `DJANGO_DEBUG`                                                               | `false`                                                                                                   |
+| `DJANGO_SECRET_KEY`                                                          | Unique random secret, at least 50 characters                                                              |
+| `DJANGO_ALLOWED_HOSTS`                                                       | Empty on Render if using its automatically detected hostname; list custom hostnames explicitly            |
+| `DATABASE_URL`                                                               | Neon PostgreSQL URL with required TLS, including `sslmode=require`                                        |
+| `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`          | Neon Object Storage endpoint and credentials                                                              |
+| `AWS_REGION`, `NEON_STORAGE_BUCKET`                                          | `us-east-2`, `uploads`                                                                                    |
+| `GRAIDER_AI_JOBS_ENABLED`                                                    | `true`                                                                                                    |
+| `GRAIDER_AI_CONCURRENCY`, `GRAIDER_AI_STUDENT_CONCURRENCY`                   | `10`, `10`; tested for ten-student demo batches.                                                          |
+| `GRAIDER_AI_SCAN_SECONDS`                                                    | `2`                                                                                                       |
+| `GRAIDER_USER_AI_REQUESTS_PER_MINUTE`                                        | `120`; token budgets remain unchanged.                                                                    |
+| `GUNICORN_WORKERS`, `GUNICORN_THREADS`                                       | `1`, `4`                                                                                                  |
+| `GRAIDER_AI_METRICS`                                                         | `false`; optionally enable numeric AI timing/resource logs. Prompts, answers and credentials are omitted. |
+| `OPENAI_API_KEY`                                                             | Dedicated project key with access to the configured models                                                |
+| `FRONTEND_URL`, `DJANGO_CORS_ALLOWED_ORIGINS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | Empty for a single-origin deployment                                                                      |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                   | Optional matching production Google client                                                                |
+| `BREVO_API_KEY`, `GRAIDER_FROM_EMAIL`                                        | Optional verified email configuration for password recovery                                               |
 
 Other settings retain the defaults in `.env.example`. Existing explicit environment values override code defaults. The `AWS_` names belong to the S3-compatible client; use Neon credentials rather than AWS credentials. Keep the bucket private.
 

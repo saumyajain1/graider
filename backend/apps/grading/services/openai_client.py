@@ -5,6 +5,8 @@ import os
 from django.conf import settings
 from openai import APIConnectionError, InternalServerError, OpenAI, OpenAIError, RateLimitError
 
+from config.ai_metrics import provider_timing
+
 from ..models import LLMUsage
 from .usage import finish_usage, reserve_usage
 
@@ -146,16 +148,17 @@ class OpenAIChatService:
             ),
         )
         try:
-            completion = self.client.chat.completions.parse(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format=response_format,
-                reasoning_effort=reasoning_effort,
-                max_completion_tokens=max_output_tokens,
-            )
+            with provider_timing(usage_row.pk, operation, model):
+                completion = self.client.chat.completions.parse(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    response_format=response_format,
+                    reasoning_effort=reasoning_effort,
+                    max_completion_tokens=max_output_tokens,
+                )
         except OpenAIError as exc:
             uncertain = isinstance(exc, (APIConnectionError, InternalServerError))
             finish(

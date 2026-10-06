@@ -16,6 +16,7 @@ from apps.grading.services.openai_client import (
     public_llm_error,
 )
 from apps.grading.services.usage import LLMQuotaExceeded, finish_usage
+from config.ai_metrics import metric
 
 from .accounting import ClaimLost, RecipeService, assert_claim
 from .models import ACTIVE_STATES, AIJob, AIJobAttempt, AIJobStep, JobState
@@ -163,6 +164,11 @@ def publish_ready():
                     job.result_reference = result
                     job.save(update_fields=("result_reference", "updated_at"))
                     set_state(job, JobState.SUCCEEDED)
+                    transaction.on_commit(
+                        lambda job_id=str(job.pk), operation=job.operation: metric(
+                            "results_committed", job_id=job_id, operation=operation
+                        )
+                    )
         refresh_parent(job.parent_id)
 
 
@@ -272,6 +278,7 @@ def heartbeat(claims):
 def run_claim(step_id, token, *, client=None):
     try:
         step = assert_claim(step_id, token)
+        metric("step_start", job_id=str(step.job_id), step_id=step.pk, key=step.key)
         output = execute_recipe(step, RecipeService(step, token, client=client))
         with transaction.atomic():
             lock_coordinator()

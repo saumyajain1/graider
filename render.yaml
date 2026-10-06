@@ -35,6 +35,16 @@ services:
         value: uploads
       - key: GRAIDER_AI_JOBS_ENABLED
         value: 'true'
+      - key: GRAIDER_AI_CONCURRENCY
+        value: '10'
+      - key: GRAIDER_AI_STUDENT_CONCURRENCY
+        value: '10'
+      - key: GRAIDER_AI_SCAN_SECONDS
+        value: '2'
+      - key: GRAIDER_USER_AI_REQUESTS_PER_MINUTE
+        value: '120'
+      - key: GRAIDER_AI_METRICS
+        value: 'false'
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_QUESTION_MODEL
