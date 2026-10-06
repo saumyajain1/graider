@@ -9,9 +9,9 @@ The demo runs on a sleeping free service; the first visit can be slow. Use sampl
 ## Features
 
 - Create assignments from text, TXT files or PDFs, with editable questions and mark allocations.
-- Generate reference answers and rubrics, or write them manually.
+- Generate reference answers and rubrics with AI, or write them manually.
 - Import submissions individually, from files or through CSV.
-- Grade against the saved reference answer and every rubric criterion; review and edit criterion scores and feedback with calculated totals.
+- Grade with AI against the saved reference answer and every rubric criterion; review and edit criterion scores and feedback with calculated totals.
 - Run AI actions in persistent background jobs, with progress, cancellation, controlled retries and recovery after restart.
 - Publish each student's complete result independently while other students continue grading.
 - Sign in with passwords or Google, explicitly connect accounts, and manage profile and credentials.
