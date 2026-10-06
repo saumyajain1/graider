@@ -342,3 +342,19 @@ SPECTACULAR_SETTINGS = {
     "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
     "SWAGGER_UI_SETTINGS": {"deepLinking": True, "displayRequestDuration": True},
 }
+
+
+# Numeric AI timing/resource events are opt-in and omit all user content.
+GRAIDER_AI_METRICS = _boolean_env("GRAIDER_AI_METRICS", False)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"ai_metrics_console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "graider.ai_metrics": {
+            "handlers": ["ai_metrics_console"],
+            "level": "INFO",
+            "propagate": False,
+        }
+    },
+}

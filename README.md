@@ -20,12 +20,12 @@ The demo runs on a sleeping free service; the first visit can be slow. Use sampl
 
 ## Engineering results
 
-- A **simulated 10-student × 10-question batch finished in 9 minutes 50 seconds** with the application limited to **0.1 CPU and 512 MiB RAM**; sampled peak memory was **337.50 MiB**.
+- A **production 10-student × 10-question grading run finished in 1 minute 54 seconds**, including answer mapping and **110 real OpenAI calls**, on Render's **0.1-CPU / 512-MB Free service**; sampled peak memory was **313.8 MiB**.
 - Container restart preserved **100 question results, 200 criterion breakdowns and 110 successful usage records**, without repeating provider calls.
 - Process-death and connection-loss checks cover checkpoint recovery, atomic publication, concurrent workers and uncertain billing.
 - GitHub Actions verifies the repository, publishes Docker images for Intel/AMD and Apple Silicon, and triggers Render with the passing commit image.
 
-Measurements use simulated provider responses and local PostgreSQL. See [benchmarks and their limits](docs/BENCHMARKS.md).
+The production benchmark uses short synthetic arithmetic answers, real GPT-6 Luna and Neon PostgreSQL; setup and startup are outside its timer. Local concurrency and process-failure experiments use simulated calls. See [benchmarks and their limits](docs/BENCHMARKS.md).
 
 ## Tech stack
 
@@ -40,14 +40,16 @@ Measurements use simulated provider responses and local PostgreSQL. See [benchma
 
 ## Documentation
 
-| Page                                              | Contents                                                                                            |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| [Architecture](docs/ARCHITECTURE.md)              | System and data diagrams, component boundaries, security and design decisions                       |
-| [Grading workflow](docs/GRADING.md)               | Assignment preparation, answer mapping, criterion scoring, concurrency, recovery and teacher review |
-| [Benchmarks](docs/BENCHMARKS.md)                  | Current and historical grading timings, test conditions, recovery evidence and reproduction         |
-| [Setup and deployment](docs/SETUP.md)             | Docker quickstart, source development, environment settings, accounts, Render and maintenance       |
-| [Issues and roadmap](docs/ROADMAP.md)             | Unresolved limitations, upcoming features and proposed improvements                                 |
-| [Raw benchmark report](docs/ai-job-capacity.json) | Machine-readable capacity measurements and runtime image ID                                         |
+| Page                                                         | Contents                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)                         | System and data diagrams, component boundaries, security and design decisions                       |
+| [Grading workflow](docs/GRADING.md)                          | Assignment preparation, answer mapping, criterion scoring, concurrency, recovery and teacher review |
+| [Benchmarks](docs/BENCHMARKS.md)                             | Current and historical grading timings, test conditions, recovery evidence and reproduction         |
+| [Setup and deployment](docs/SETUP.md)                        | Docker quickstart, source development, environment settings, accounts, Render and maintenance       |
+| [Issues and roadmap](docs/ROADMAP.md)                        | Unresolved limitations, upcoming features and proposed improvements                                 |
+| [Production grading report](docs/ai-grading-production.json) | Real-provider timings, resource samples, usage and restart evidence                                 |
+| [Raw grading benchmarks](docs/ai-grading-concurrency.json)   | Concurrency experiments, isolated grading measurements and runtime image ID                         |
+| [Earlier capacity report](docs/ai-job-capacity.json)         | Historical full-workflow, startup and restart measurements                                          |
 
 These pages describe this checkout; the deployed demo and published `latest` image may lag it.
 

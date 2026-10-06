@@ -32,17 +32,17 @@ References: [Responses migration](https://developers.openai.com/api/docs/guides/
 
 ## AI quality
 
-| Limitation                                | Proposed improvement                                                                                                                                                                 |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Prompt injection                          | Delimit untrusted assignment/submission text, strengthen instruction/data separation and add adversarial tests. Schema and score checks alone do not establish injection resistance. |
-| Incomplete output checks                  | Add semantic/format validation and review flags for suspicious instruction-following or unsuitable feedback.                                                                         |
-| No systematic grading-quality measurement | Build a versioned human-scored dataset and evaluate answer mapping, score disagreement, rubric adherence and model/prompt regressions.                                               |
-| Uncalibrated confidence                   | Calibrate model-reported confidence against human disagreement and choose review thresholds from evidence.                                                                           |
-| No systematic prompt/model comparison     | Tie prompt-policy versions to evaluations and published-result metadata, and compare quality before changing defaults.                                                               |
-| Unbenchmarked model routing               | Compare task-specific cost, latency and quality; add controlled fallback only when justified.                                                                                        |
-| Limited long-document support             | Add chunking/context selection if measured large-document needs exceed current input limits.                                                                                         |
-| Limited observability and edit history    | Add privacy-safe latency/error/usage summaries and a revision trail for AI suggestions versus teacher changes.                                                                       |
-| Untested bias and consistency             | Evaluate anonymized and counterfactual cases for irrelevant name/order effects and strengthen human-review rules.                                                                    |
+| Limitation                                | Proposed improvement                                                                                                                                                                         |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt injection                          | Delimit untrusted assignment/submission text, strengthen instruction/data separation and add adversarial tests. Schema and score checks alone do not establish injection resistance.         |
+| Incomplete output checks                  | Add semantic/format validation and review flags for suspicious instruction-following or unsuitable feedback.                                                                                 |
+| No systematic grading-quality measurement | Build a versioned human-scored dataset and evaluate answer mapping, score disagreement, rubric adherence and model/prompt regressions.                                                       |
+| Uncalibrated confidence                   | Calibrate model-reported confidence against human disagreement and choose review thresholds from evidence.                                                                                   |
+| No systematic prompt/model comparison     | Tie prompt-policy versions to evaluations and published-result metadata, and compare quality before changing defaults.                                                                       |
+| Unbenchmarked model routing               | Compare task-specific cost, latency and quality; add controlled fallback only when justified.                                                                                                |
+| Limited long-document support             | Add chunking/context selection if measured large-document needs exceed current input limits.                                                                                                 |
+| Limited observability and edit history    | Build a user-facing monitoring dashboard and a revision trail for AI suggestions versus teacher changes; optional numeric execution logs already provide basic timings and resource samples. |
+| Untested bias and consistency             | Evaluate anonymized and counterfactual cases for irrelevant name/order effects and strengthen human-review rules.                                                                            |
 
 ## Other integrations
 
@@ -53,12 +53,13 @@ References: [Responses migration](https://developers.openai.com/api/docs/guides/
 
 ## Operations
 
-| Limitation                                        | Proposed improvement                                                                                                                                          |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared small web/worker service                   | For higher traffic, separate worker/web capacity and revisit the coordinator lock and queue design.                                                           |
-| Service sleep and slow startup                    | Use always-on compute if unattended completion or predictable startup becomes required. No jobs execute while the service is stopped.                         |
-| Completion time is not guaranteed                 | Measure real-provider and deployed wake/network behavior before setting a latency promise; current capacity timings use simulated calls and local PostgreSQL. |
-| Possible duplicate provider charges after a crash | Retain explicit acknowledgement for uncertain retries and investigate provider-supported reconciliation. External exactly-once execution is not guaranteed.   |
-| Shared AI allowance can be exhausted              | Consider optional controlled demo access if quotas and the provider cap do not provide sufficient availability for visitors.                                  |
-| Production password-recovery email                | Configure verified Brevo credentials and test delivery before relying on password recovery. Email-provider setup remains deferred.                            |
-| Manual job-history cleanup                        | Add a retention schedule that preserves active work and usage accounting and suits the hosting lifecycle.                                                     |
+| Limitation                                        | Proposed improvement                                                                                                                                                                                                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Shared small web/worker service                   | For higher traffic, separate worker/web capacity and revisit the coordinator lock and queue design.                                                                                                                      |
+| Service sleep and slow startup                    | Use always-on compute if unattended completion or predictable startup becomes required. No jobs execute while the service is stopped.                                                                                    |
+| Completion time is not guaranteed                 | Repeat deployed measurements with representative assignments and cold starts before promising latency; the recorded production benchmark uses short synthetic arithmetic answers.                                        |
+| Temporary request-rate exhaustion pauses jobs     | Defer dispatch until the rolling request allowance resets, while keeping daily/monthly token exhaustion paused. The concurrency benchmark observed manual-retry pauses at 40/minute locally and 60/minute in production. |
+| Possible duplicate provider charges after a crash | Retain explicit acknowledgement for uncertain retries and investigate provider-supported reconciliation. External exactly-once execution is not guaranteed.                                                              |
+| Shared AI allowance can be exhausted              | Consider optional controlled demo access if quotas and the provider cap do not provide sufficient availability for visitors.                                                                                             |
+| Production password-recovery email                | Configure verified Brevo credentials and test delivery before relying on password recovery. Email-provider setup remains deferred.                                                                                       |
+| Manual job-history cleanup                        | Add a retention schedule that preserves active work and usage accounting and suits the hosting lifecycle.                                                                                                                |

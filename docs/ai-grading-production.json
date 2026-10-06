@@ -1,0 +1,1105 @@
+{
+  "production_grading": {
+    "run_started_at": "2026-10-06T09:25:46.667979+00:00",
+    "service_url": "https://graider-xt2w.onrender.com",
+    "simulated_provider": false,
+    "database": "production Neon PostgreSQL",
+    "students": 10,
+    "questions_per_student": 10,
+    "criteria_per_question": 2,
+    "workload": "Short arithmetic explanations with two rubric criteria per question.",
+    "measurement": "grading only; fixtures, authentication and service wake-up excluded",
+    "progress_poll_seconds": 5,
+    "baseline_counts": {
+      "users": 4,
+      "assignments": 2,
+      "submissions": 14
+    },
+    "http_status": 202,
+    "admission_seconds": 1.885714,
+    "job_id": "a412a4f8-5c5f-411d-b6b8-8f0e8910b732",
+    "assignment_id": 7,
+    "job_created_at": "2026-10-06T09:25:53.243333+00:00",
+    "ai_configuration": {
+      "answer_mapping": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "question_repair": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "reference_answer": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "rubric_generation": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "submission_grading": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "question_generation": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      }
+    },
+    "first_student_observed_at": "2026-10-06T09:27:37.205171+00:00",
+    "student_visible_before_batch_complete": true,
+    "all_students_observed_at": "2026-10-06T09:27:48.459856+00:00",
+    "request_to_finished_record_seconds": 114.209273,
+    "dispatch_to_finished_record_seconds": 112.098509,
+    "timing_boundary_note": "Database timestamps precede commit; use AI_METRIC events for exact execution/publication boundaries.",
+    "student_finished_records": [
+      {
+        "job_id": "45690983-11f0-4dfd-8111-86bfd53b3712",
+        "finished_at": "2026-10-06T09:27:34.157361+00:00"
+      },
+      {
+        "job_id": "34686d2d-3807-4756-a262-5c522e008f5b",
+        "finished_at": "2026-10-06T09:27:36.347863+00:00"
+      },
+      {
+        "job_id": "4b58fc52-6177-4bb0-b312-7680a5f1755b",
+        "finished_at": "2026-10-06T09:27:37.445850+00:00"
+      },
+      {
+        "job_id": "ad4b5e21-538a-4258-8092-82bc405bbb5b",
+        "finished_at": "2026-10-06T09:27:38.147224+00:00"
+      },
+      {
+        "job_id": "e7b67c00-c39b-428a-a38a-64e121056882",
+        "finished_at": "2026-10-06T09:27:40.571053+00:00"
+      },
+      {
+        "job_id": "7f4dda89-7cd3-40a5-9afb-3ed828a7c0a3",
+        "finished_at": "2026-10-06T09:27:41.281360+00:00"
+      },
+      {
+        "job_id": "b5064d7c-f2e3-4cf1-a2fd-e493a07efcf5",
+        "finished_at": "2026-10-06T09:27:42.040288+00:00"
+      },
+      {
+        "job_id": "091b06cc-b7f1-4a8d-878d-9436c091f4c6",
+        "finished_at": "2026-10-06T09:27:43.970431+00:00"
+      },
+      {
+        "job_id": "16feaca0-2776-4257-a811-3defdc425306",
+        "finished_at": "2026-10-06T09:27:46.670286+00:00"
+      },
+      {
+        "job_id": "96eeaec5-a983-4393-b8b3-1b7561ffc8d2",
+        "finished_at": "2026-10-06T09:27:47.452606+00:00"
+      }
+    ],
+    "attempts": [
+      {
+        "usage_id": 140,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:55.354097+00:00",
+        "finished_at": "2026-10-06T09:25:59.150165+00:00"
+      },
+      {
+        "usage_id": 141,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:55.738226+00:00",
+        "finished_at": "2026-10-06T09:25:59.543936+00:00"
+      },
+      {
+        "usage_id": 142,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:56.243106+00:00",
+        "finished_at": "2026-10-06T09:26:00.947701+00:00"
+      },
+      {
+        "usage_id": 143,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:57.045473+00:00",
+        "finished_at": "2026-10-06T09:26:01.240778+00:00"
+      },
+      {
+        "usage_id": 144,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:57.746130+00:00",
+        "finished_at": "2026-10-06T09:26:01.255701+00:00"
+      },
+      {
+        "usage_id": 145,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:58.441729+00:00",
+        "finished_at": "2026-10-06T09:26:02.153731+00:00"
+      },
+      {
+        "usage_id": 146,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:25:59.353277+00:00",
+        "finished_at": "2026-10-06T09:26:02.644414+00:00"
+      },
+      {
+        "usage_id": 147,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:00.843891+00:00",
+        "finished_at": "2026-10-06T09:26:04.085644+00:00"
+      },
+      {
+        "usage_id": 148,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:01.542656+00:00",
+        "finished_at": "2026-10-06T09:26:04.680528+00:00"
+      },
+      {
+        "usage_id": 149,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:02.137896+00:00",
+        "finished_at": "2026-10-06T09:26:04.780209+00:00"
+      },
+      {
+        "usage_id": 150,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:03.538006+00:00",
+        "finished_at": "2026-10-06T09:26:06.148302+00:00"
+      },
+      {
+        "usage_id": 151,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:03.743501+00:00",
+        "finished_at": "2026-10-06T09:26:06.338813+00:00"
+      },
+      {
+        "usage_id": 152,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:06.542979+00:00",
+        "finished_at": "2026-10-06T09:26:08.649083+00:00"
+      },
+      {
+        "usage_id": 153,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:07.546338+00:00",
+        "finished_at": "2026-10-06T09:26:10.952649+00:00"
+      },
+      {
+        "usage_id": 154,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:07.949397+00:00",
+        "finished_at": "2026-10-06T09:26:10.937672+00:00"
+      },
+      {
+        "usage_id": 155,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:08.846842+00:00",
+        "finished_at": "2026-10-06T09:26:12.460823+00:00"
+      },
+      {
+        "usage_id": 156,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:10.737926+00:00",
+        "finished_at": "2026-10-06T09:26:13.155449+00:00"
+      },
+      {
+        "usage_id": 157,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:11.375868+00:00",
+        "finished_at": "2026-10-06T09:26:14.241072+00:00"
+      },
+      {
+        "usage_id": 158,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:12.650228+00:00",
+        "finished_at": "2026-10-06T09:26:15.344757+00:00"
+      },
+      {
+        "usage_id": 159,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:13.546739+00:00",
+        "finished_at": "2026-10-06T09:26:16.565738+00:00"
+      },
+      {
+        "usage_id": 160,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:14.350087+00:00",
+        "finished_at": "2026-10-06T09:26:17.238929+00:00"
+      },
+      {
+        "usage_id": 161,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:15.246296+00:00",
+        "finished_at": "2026-10-06T09:26:17.677098+00:00"
+      },
+      {
+        "usage_id": 162,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:16.037809+00:00",
+        "finished_at": "2026-10-06T09:26:18.651049+00:00"
+      },
+      {
+        "usage_id": 163,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:16.747149+00:00",
+        "finished_at": "2026-10-06T09:26:19.639916+00:00"
+      },
+      {
+        "usage_id": 164,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:17.266408+00:00",
+        "finished_at": "2026-10-06T09:26:19.941044+00:00"
+      },
+      {
+        "usage_id": 165,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:18.844514+00:00",
+        "finished_at": "2026-10-06T09:26:21.361704+00:00"
+      },
+      {
+        "usage_id": 166,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:19.846263+00:00",
+        "finished_at": "2026-10-06T09:26:22.352591+00:00"
+      },
+      {
+        "usage_id": 167,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:20.642018+00:00",
+        "finished_at": "2026-10-06T09:26:23.042524+00:00"
+      },
+      {
+        "usage_id": 168,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:21.541957+00:00",
+        "finished_at": "2026-10-06T09:26:23.638944+00:00"
+      },
+      {
+        "usage_id": 169,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:22.641590+00:00",
+        "finished_at": "2026-10-06T09:26:25.153970+00:00"
+      },
+      {
+        "usage_id": 170,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:22.884274+00:00",
+        "finished_at": "2026-10-06T09:26:25.440752+00:00"
+      },
+      {
+        "usage_id": 171,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:24.537931+00:00",
+        "finished_at": "2026-10-06T09:26:27.143682+00:00"
+      },
+      {
+        "usage_id": 172,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:25.338093+00:00",
+        "finished_at": "2026-10-06T09:26:28.443826+00:00"
+      },
+      {
+        "usage_id": 173,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:26.550629+00:00",
+        "finished_at": "2026-10-06T09:26:28.637613+00:00"
+      },
+      {
+        "usage_id": 174,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:27.054178+00:00",
+        "finished_at": "2026-10-06T09:26:29.243422+00:00"
+      },
+      {
+        "usage_id": 175,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:28.342165+00:00",
+        "finished_at": "2026-10-06T09:26:30.638881+00:00"
+      },
+      {
+        "usage_id": 176,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:28.549618+00:00",
+        "finished_at": "2026-10-06T09:26:30.845387+00:00"
+      },
+      {
+        "usage_id": 177,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:30.143189+00:00",
+        "finished_at": "2026-10-06T09:26:32.956434+00:00"
+      },
+      {
+        "usage_id": 178,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:30.744330+00:00",
+        "finished_at": "2026-10-06T09:26:33.251069+00:00"
+      },
+      {
+        "usage_id": 179,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:31.846203+00:00",
+        "finished_at": "2026-10-06T09:26:34.165053+00:00"
+      },
+      {
+        "usage_id": 180,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:32.251954+00:00",
+        "finished_at": "2026-10-06T09:26:34.346359+00:00"
+      },
+      {
+        "usage_id": 181,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:33.142862+00:00",
+        "finished_at": "2026-10-06T09:26:35.550854+00:00"
+      },
+      {
+        "usage_id": 182,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:33.661725+00:00",
+        "finished_at": "2026-10-06T09:26:36.350067+00:00"
+      },
+      {
+        "usage_id": 183,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:35.455944+00:00",
+        "finished_at": "2026-10-06T09:26:38.137684+00:00"
+      },
+      {
+        "usage_id": 184,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:36.640222+00:00",
+        "finished_at": "2026-10-06T09:26:39.262702+00:00"
+      },
+      {
+        "usage_id": 185,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:37.341330+00:00",
+        "finished_at": "2026-10-06T09:26:39.945259+00:00"
+      },
+      {
+        "usage_id": 186,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:37.952447+00:00",
+        "finished_at": "2026-10-06T09:26:40.645545+00:00"
+      },
+      {
+        "usage_id": 187,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:38.844858+00:00",
+        "finished_at": "2026-10-06T09:26:43.956317+00:00"
+      },
+      {
+        "usage_id": 188,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:39.446013+00:00",
+        "finished_at": "2026-10-06T09:26:42.145536+00:00"
+      },
+      {
+        "usage_id": 189,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:40.147218+00:00",
+        "finished_at": "2026-10-06T09:26:42.440990+00:00"
+      },
+      {
+        "usage_id": 190,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:41.639303+00:00",
+        "finished_at": "2026-10-06T09:26:44.562111+00:00"
+      },
+      {
+        "usage_id": 191,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:42.258744+00:00",
+        "finished_at": "2026-10-06T09:26:44.652474+00:00"
+      },
+      {
+        "usage_id": 192,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:43.443669+00:00",
+        "finished_at": "2026-10-06T09:26:46.357252+00:00"
+      },
+      {
+        "usage_id": 193,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:44.152077+00:00",
+        "finished_at": "2026-10-06T09:26:46.742014+00:00"
+      },
+      {
+        "usage_id": 194,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:44.748724+00:00",
+        "finished_at": "2026-10-06T09:26:47.342829+00:00"
+      },
+      {
+        "usage_id": 195,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:46.543474+00:00",
+        "finished_at": "2026-10-06T09:26:49.048341+00:00"
+      },
+      {
+        "usage_id": 196,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:47.750487+00:00",
+        "finished_at": "2026-10-06T09:26:50.651546+00:00"
+      },
+      {
+        "usage_id": 197,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:48.635474+00:00",
+        "finished_at": "2026-10-06T09:26:51.238410+00:00"
+      },
+      {
+        "usage_id": 198,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:48.951040+00:00",
+        "finished_at": "2026-10-06T09:26:51.464180+00:00"
+      },
+      {
+        "usage_id": 199,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:50.239203+00:00",
+        "finished_at": "2026-10-06T09:26:52.656866+00:00"
+      },
+      {
+        "usage_id": 200,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:50.937967+00:00",
+        "finished_at": "2026-10-06T09:26:53.939396+00:00"
+      },
+      {
+        "usage_id": 201,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:52.039715+00:00",
+        "finished_at": "2026-10-06T09:26:54.739855+00:00"
+      },
+      {
+        "usage_id": 202,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:52.938140+00:00",
+        "finished_at": "2026-10-06T09:26:55.089604+00:00"
+      },
+      {
+        "usage_id": 203,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:53.744849+00:00",
+        "finished_at": "2026-10-06T09:26:55.767132+00:00"
+      },
+      {
+        "usage_id": 204,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:54.353124+00:00",
+        "finished_at": "2026-10-06T09:26:56.742066+00:00"
+      },
+      {
+        "usage_id": 205,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:54.944844+00:00",
+        "finished_at": "2026-10-06T09:26:57.641919+00:00"
+      },
+      {
+        "usage_id": 206,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:57.951821+00:00",
+        "finished_at": "2026-10-06T09:27:00.654397+00:00"
+      },
+      {
+        "usage_id": 207,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:58.537707+00:00",
+        "finished_at": "2026-10-06T09:27:01.638847+00:00"
+      },
+      {
+        "usage_id": 208,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:26:59.150346+00:00",
+        "finished_at": "2026-10-06T09:27:02.547117+00:00"
+      },
+      {
+        "usage_id": 209,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:00.044008+00:00",
+        "finished_at": "2026-10-06T09:27:03.051614+00:00"
+      },
+      {
+        "usage_id": 210,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:00.838156+00:00",
+        "finished_at": "2026-10-06T09:27:04.264146+00:00"
+      },
+      {
+        "usage_id": 211,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:01.947000+00:00",
+        "finished_at": "2026-10-06T09:27:04.641445+00:00"
+      },
+      {
+        "usage_id": 212,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:03.037888+00:00",
+        "finished_at": "2026-10-06T09:27:05.660274+00:00"
+      },
+      {
+        "usage_id": 213,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:03.745168+00:00",
+        "finished_at": "2026-10-06T09:27:05.851308+00:00"
+      },
+      {
+        "usage_id": 214,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:04.447027+00:00",
+        "finished_at": "2026-10-06T09:27:06.774192+00:00"
+      },
+      {
+        "usage_id": 215,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:05.646689+00:00",
+        "finished_at": "2026-10-06T09:27:07.943498+00:00"
+      },
+      {
+        "usage_id": 216,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:05.762403+00:00",
+        "finished_at": "2026-10-06T09:27:09.940989+00:00"
+      },
+      {
+        "usage_id": 217,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:08.858001+00:00",
+        "finished_at": "2026-10-06T09:27:11.840412+00:00"
+      },
+      {
+        "usage_id": 218,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:09.440886+00:00",
+        "finished_at": "2026-10-06T09:27:11.658133+00:00"
+      },
+      {
+        "usage_id": 219,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:10.056046+00:00",
+        "finished_at": "2026-10-06T09:27:13.341890+00:00"
+      },
+      {
+        "usage_id": 220,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:11.043517+00:00",
+        "finished_at": "2026-10-06T09:27:13.540798+00:00"
+      },
+      {
+        "usage_id": 221,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:11.642518+00:00",
+        "finished_at": "2026-10-06T09:27:15.149023+00:00"
+      },
+      {
+        "usage_id": 222,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:12.841075+00:00",
+        "finished_at": "2026-10-06T09:27:15.243442+00:00"
+      },
+      {
+        "usage_id": 223,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:13.247882+00:00",
+        "finished_at": "2026-10-06T09:27:16.442914+00:00"
+      },
+      {
+        "usage_id": 224,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:14.755073+00:00",
+        "finished_at": "2026-10-06T09:27:17.661934+00:00"
+      },
+      {
+        "usage_id": 225,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:15.441052+00:00",
+        "finished_at": "2026-10-06T09:27:18.546413+00:00"
+      },
+      {
+        "usage_id": 226,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:16.544818+00:00",
+        "finished_at": "2026-10-06T09:27:20.958334+00:00"
+      },
+      {
+        "usage_id": 227,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:16.956831+00:00",
+        "finished_at": "2026-10-06T09:27:20.246289+00:00"
+      },
+      {
+        "usage_id": 228,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:17.843330+00:00",
+        "finished_at": "2026-10-06T09:27:20.845105+00:00"
+      },
+      {
+        "usage_id": 229,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:18.846969+00:00",
+        "finished_at": "2026-10-06T09:27:22.068342+00:00"
+      },
+      {
+        "usage_id": 230,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:19.549465+00:00",
+        "finished_at": "2026-10-06T09:27:22.440930+00:00"
+      },
+      {
+        "usage_id": 231,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:20.537878+00:00",
+        "finished_at": "2026-10-06T09:27:23.143115+00:00"
+      },
+      {
+        "usage_id": 232,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:21.346357+00:00",
+        "finished_at": "2026-10-06T09:27:23.659460+00:00"
+      },
+      {
+        "usage_id": 233,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:22.240431+00:00",
+        "finished_at": "2026-10-06T09:27:24.373932+00:00"
+      },
+      {
+        "usage_id": 234,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:23.453914+00:00",
+        "finished_at": "2026-10-06T09:27:28.259047+00:00"
+      },
+      {
+        "usage_id": 235,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:23.755193+00:00",
+        "finished_at": "2026-10-06T09:27:26.738859+00:00"
+      },
+      {
+        "usage_id": 236,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:26.055491+00:00",
+        "finished_at": "2026-10-06T09:27:29.439945+00:00"
+      },
+      {
+        "usage_id": 237,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:26.851100+00:00",
+        "finished_at": "2026-10-06T09:27:29.950443+00:00"
+      },
+      {
+        "usage_id": 238,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:27.742734+00:00",
+        "finished_at": "2026-10-06T09:27:30.939158+00:00"
+      },
+      {
+        "usage_id": 239,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:28.350716+00:00",
+        "finished_at": "2026-10-06T09:27:31.960522+00:00"
+      },
+      {
+        "usage_id": 240,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:29.247720+00:00",
+        "finished_at": "2026-10-06T09:27:32.340448+00:00"
+      },
+      {
+        "usage_id": 241,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:30.356684+00:00",
+        "finished_at": "2026-10-06T09:27:33.467239+00:00"
+      },
+      {
+        "usage_id": 242,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:31.238154+00:00",
+        "finished_at": "2026-10-06T09:27:35.050236+00:00"
+      },
+      {
+        "usage_id": 243,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:32.138964+00:00",
+        "finished_at": "2026-10-06T09:27:35.149635+00:00"
+      },
+      {
+        "usage_id": 244,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:33.148831+00:00",
+        "finished_at": "2026-10-06T09:27:38.368485+00:00"
+      },
+      {
+        "usage_id": 245,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:34.562553+00:00",
+        "finished_at": "2026-10-06T09:27:38.461448+00:00"
+      },
+      {
+        "usage_id": 246,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:35.337788+00:00",
+        "finished_at": "2026-10-06T09:27:38.637674+00:00"
+      },
+      {
+        "usage_id": 247,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:39.845215+00:00",
+        "finished_at": "2026-10-06T09:27:42.748034+00:00"
+      },
+      {
+        "usage_id": 248,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:42.539961+00:00",
+        "finished_at": "2026-10-06T09:27:44.989792+00:00"
+      },
+      {
+        "usage_id": 249,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:27:43.252045+00:00",
+        "finished_at": "2026-10-06T09:27:45.209768+00:00"
+      }
+    ],
+    "usage": [
+      {
+        "status": "succeeded",
+        "operation": "submission_grading",
+        "model": "gpt-6-luna",
+        "calls": 100,
+        "input_tokens": 42800,
+        "output_tokens": 17373,
+        "total_tokens": 60173
+      },
+      {
+        "status": "succeeded",
+        "operation": "answer_mapping",
+        "model": "gpt-6-luna",
+        "calls": 10,
+        "input_tokens": 7560,
+        "output_tokens": 3609,
+        "total_tokens": 11169
+      }
+    ],
+    "question_results": 100,
+    "criterion_results": 200,
+    "progress_request_median_seconds": 0.66132,
+    "progress_request_max_seconds": 1.121545,
+    "progress_requests": 21,
+    "no_partial_student_results": true,
+    "passed": true,
+    "audit_account_disabled_usage_preserved": true,
+    "after_counts": {
+      "users": 5,
+      "assignments": 1,
+      "submissions": 4
+    },
+    "restart_before": {
+      "question_results": 100,
+      "criterion_results": 200,
+      "usage_records": 110,
+      "successful_usage_records": 110,
+      "grades_sha256": "ee190f3d08381ccb3c7fd91d722b1fe2dc5b681c1cdd9dd50a475e0c1fde7bd0",
+      "usage_sha256": "4da6124b627ff43611ac2b397ee195b6f4f95a8fa138a719b4c3518db2dbb423"
+    },
+    "restart_verification": {
+      "passed": true,
+      "question_results_preserved": 100,
+      "criterion_results_preserved": 200,
+      "successful_usage_records_preserved": 110,
+      "grades_and_usage_unchanged": true,
+      "additional_provider_calls": 0,
+      "render_new_instance": "sx4s2",
+      "new_gunicorn_started_at": "2026-10-06T09:31:12Z"
+    },
+    "synthetic_assignments_removed": true,
+    "metrics": {
+      "source": "Render application logs: all 340 AI_METRIC events for the clean production run",
+      "event_count": 340,
+      "event_counts": {
+        "step_start": 110,
+        "provider_start": 110,
+        "provider_end": 110,
+        "results_committed": 10
+      },
+      "first_step_started_at": "2026-10-06T09:25:54.053922+00:00",
+      "last_results_committed_at": "2026-10-06T09:27:47.549186+00:00",
+      "grading_processing_seconds": 113.496,
+      "first_student_seconds": 100.392,
+      "sampled_peak_memory_bytes": 329003008,
+      "sampled_peak_memory_mib": 313.76171875,
+      "cpu_seconds": 16.090446,
+      "oom_kills_added": 0,
+      "students": [
+        {
+          "job_id": "45690983-11f0-4dfd-8111-86bfd53b3712",
+          "committed_at": "2026-10-06T09:27:34.445888+00:00",
+          "seconds": 100.392
+        },
+        {
+          "job_id": "34686d2d-3807-4756-a262-5c522e008f5b",
+          "committed_at": "2026-10-06T09:27:38.350689+00:00",
+          "seconds": 104.297
+        },
+        {
+          "job_id": "4b58fc52-6177-4bb0-b312-7680a5f1755b",
+          "committed_at": "2026-10-06T09:27:38.351548+00:00",
+          "seconds": 104.298
+        },
+        {
+          "job_id": "ad4b5e21-538a-4258-8092-82bc405bbb5b",
+          "committed_at": "2026-10-06T09:27:38.351909+00:00",
+          "seconds": 104.298
+        },
+        {
+          "job_id": "e7b67c00-c39b-428a-a38a-64e121056882",
+          "committed_at": "2026-10-06T09:27:42.263994+00:00",
+          "seconds": 108.21
+        },
+        {
+          "job_id": "7f4dda89-7cd3-40a5-9afb-3ed828a7c0a3",
+          "committed_at": "2026-10-06T09:27:42.264475+00:00",
+          "seconds": 108.211
+        },
+        {
+          "job_id": "b5064d7c-f2e3-4cf1-a2fd-e493a07efcf5",
+          "committed_at": "2026-10-06T09:27:42.264746+00:00",
+          "seconds": 108.211
+        },
+        {
+          "job_id": "091b06cc-b7f1-4a8d-878d-9436c091f4c6",
+          "committed_at": "2026-10-06T09:27:44.061421+00:00",
+          "seconds": 110.008
+        },
+        {
+          "job_id": "16feaca0-2776-4257-a811-3defdc425306",
+          "committed_at": "2026-10-06T09:27:47.548676+00:00",
+          "seconds": 113.495
+        },
+        {
+          "job_id": "96eeaec5-a983-4393-b8b3-1b7561ffc8d2",
+          "committed_at": "2026-10-06T09:27:47.549186+00:00",
+          "seconds": 113.496
+        }
+      ],
+      "provider_timings": {
+        "answer_mapping": {
+          "calls": 10,
+          "mean_seconds": 3.1445602,
+          "median_seconds": 3.194299,
+          "p95_seconds": 3.589619,
+          "max_seconds": 3.589619,
+          "outcomes": {
+            "returned": 10
+          }
+        },
+        "submission_grading": {
+          "calls": 100,
+          "mean_seconds": 2.26376319,
+          "median_seconds": 2.1837,
+          "p95_seconds": 2.898644,
+          "max_seconds": 4.483737,
+          "outcomes": {
+            "returned": 100
+          }
+        }
+      },
+      "maximum_overlapping_provider_calls": 6
+    },
+    "service": {
+      "plan": "Render Free",
+      "advertised_cpu": 0.1,
+      "advertised_memory_mb": 512,
+      "region": "Ohio",
+      "image": "docker.io/saumyaj1/graider:production-benchmark-20261006",
+      "oci_digest": "sha256:f4bc6aba763adf7f206e34e850ace8d73ba14a326143f1da9b66634f442f0492",
+      "web_processes": 1,
+      "web_threads": 4,
+      "ai_call_slots": 10,
+      "active_students": 10,
+      "scan_seconds": 2,
+      "user_ai_requests_per_minute": 120
+    }
+  },
+  "initial_quota_pause_and_recovery": {
+    "run_started_at": "2026-10-06T09:19:44.970421+00:00",
+    "service_url": "https://graider-xt2w.onrender.com",
+    "simulated_provider": false,
+    "database": "production Neon PostgreSQL",
+    "students": 10,
+    "questions_per_student": 10,
+    "criteria_per_question": 2,
+    "workload": "Short arithmetic explanations; identical to local capacity fixture.",
+    "measurement": "grading only; fixtures, authentication and service wake-up excluded",
+    "progress_poll_seconds": 5,
+    "baseline_counts": {
+      "users": 3,
+      "assignments": 1,
+      "submissions": 4
+    },
+    "http_status": 202,
+    "admission_seconds": 1.354518,
+    "job_id": "a88a5d7b-f872-4645-8867-f6a41b770d11",
+    "assignment_id": 6,
+    "job_created_at": "2026-10-06T09:19:50.865458+00:00",
+    "ai_configuration": {
+      "answer_mapping": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "question_repair": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "reference_answer": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "rubric_generation": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "submission_grading": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "question_generation": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      }
+    },
+    "first_student_observed_at": "2026-10-06T09:21:21.253099+00:00",
+    "student_visible_before_batch_complete": true,
+    "passed": false,
+    "failure": "Benchmark stopped safely: paused_quota ().",
+    "audit_account_disabled_usage_preserved": true,
+    "after_counts": {
+      "users": 5,
+      "assignments": 2,
+      "submissions": 14
+    },
+    "quota_recovery": {
+      "successful_calls_before_resume": 84,
+      "successful_calls_after_resume": 110,
+      "saved_calls_reused": true,
+      "question_results": 100,
+      "state": "succeeded"
+    },
+    "synthetic_assignments_removed": true
+  },
+  "small_live_check": {
+    "run_started_at": "2026-10-06T09:19:11.895695+00:00",
+    "service_url": "https://graider-xt2w.onrender.com",
+    "simulated_provider": false,
+    "database": "production Neon PostgreSQL",
+    "students": 1,
+    "questions_per_student": 2,
+    "criteria_per_question": 2,
+    "workload": "Short arithmetic explanations; identical to local capacity fixture.",
+    "measurement": "grading only; fixtures, authentication and service wake-up excluded",
+    "progress_poll_seconds": 5,
+    "baseline_counts": {
+      "users": 2,
+      "assignments": 1,
+      "submissions": 4
+    },
+    "http_status": 202,
+    "admission_seconds": 0.495808,
+    "job_id": "84af67a5-e1c5-4b7c-9515-01d95ce780c1",
+    "assignment_id": 5,
+    "job_created_at": "2026-10-06T09:19:16.250183+00:00",
+    "ai_configuration": {
+      "answer_mapping": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "question_repair": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "reference_answer": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "rubric_generation": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "submission_grading": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      },
+      "question_generation": {
+        "model": "gpt-6-luna",
+        "reasoning_effort": "medium"
+      }
+    },
+    "first_student_observed_at": "2026-10-06T09:19:33.269223+00:00",
+    "student_visible_before_batch_complete": false,
+    "all_students_observed_at": "2026-10-06T09:19:33.330680+00:00",
+    "request_to_finished_record_seconds": 15.909477,
+    "dispatch_to_finished_record_seconds": 14.605359,
+    "timing_boundary_note": "Database timestamps precede commit; use AI_METRIC events for exact execution/publication boundaries.",
+    "student_finished_records": [
+      {
+        "job_id": "c470a723-0136-4831-b4d1-8c0744378e36",
+        "finished_at": "2026-10-06T09:19:32.159660+00:00"
+      }
+    ],
+    "attempts": [
+      {
+        "usage_id": 27,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:19:17.554301+00:00",
+        "finished_at": "2026-10-06T09:19:23.354217+00:00"
+      },
+      {
+        "usage_id": 28,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:19:24.945328+00:00",
+        "finished_at": "2026-10-06T09:19:27.111684+00:00"
+      },
+      {
+        "usage_id": 29,
+        "state": "succeeded",
+        "created_at": "2026-10-06T09:19:28.156398+00:00",
+        "finished_at": "2026-10-06T09:19:30.438299+00:00"
+      }
+    ],
+    "usage": [
+      {
+        "status": "succeeded",
+        "operation": "answer_mapping",
+        "model": "gpt-6-luna",
+        "calls": 1,
+        "input_tokens": 324,
+        "output_tokens": 97,
+        "total_tokens": 421
+      },
+      {
+        "status": "succeeded",
+        "operation": "submission_grading",
+        "model": "gpt-6-luna",
+        "calls": 2,
+        "input_tokens": 856,
+        "output_tokens": 378,
+        "total_tokens": 1234
+      }
+    ],
+    "question_results": 2,
+    "criterion_results": 4,
+    "progress_request_median_seconds": 0.368761,
+    "progress_request_max_seconds": 0.795507,
+    "progress_requests": 4,
+    "no_partial_student_results": true,
+    "passed": true,
+    "synthetic_assignments_removed": true,
+    "audit_account_disabled_usage_preserved": true,
+    "after_counts": {
+      "users": 3,
+      "assignments": 1,
+      "submissions": 4
+    }
+  },
+  "cleanup": {
+    "assignments": 1,
+    "submissions": 4,
+    "disabled_synthetic_audit_accounts": 3,
+    "usage_records_preserved": true
+  }
+}
